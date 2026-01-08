@@ -1,7 +1,7 @@
 // Supabase client
-export { supabase } from './supabase/client';
 export * from './supabase/auth';
-export type { SignUpData, SignInData, SignUpWithOTPData, VerifyOTPData } from './supabase/auth';
+export type { SignInData, SignUpData, SignUpWithOTPData, VerifyOTPData } from './supabase/auth';
+export { supabase } from './supabase/client';
 
 // Types
 export * from './types/database';

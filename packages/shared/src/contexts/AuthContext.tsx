@@ -11,7 +11,7 @@ interface AuthContextType {
   signIn: (data: SignInData) => Promise<void>;
   signUp: (data: SignUpData) => Promise<void>;
   signOut: () => Promise<void>;
-  resetPassword: (email: string) => Promise<void>;
+  resetPassword: (phone: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -56,8 +56,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // State will be updated via onAuthStateChange
   };
 
-  const handleResetPassword = async (email: string) => {
-    await resetPassword(email);
+  const handleResetPassword = async (phone: string) => {
+    await resetPassword(phone);
   };
 
   const value: AuthContextType = {

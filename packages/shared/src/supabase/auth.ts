@@ -1,5 +1,5 @@
-import { supabase } from './client';
 import { UserType } from '../types/enums';
+import { supabase } from './client';
 
 export interface SignUpData {
   phone: string;
@@ -33,22 +33,22 @@ export interface VerifyOTPData {
 export function formatPhoneE164(phone: string): string {
   // Remove all non-digit characters
   const cleaned = phone.replace(/\D/g, '');
-  
+
   // If it already starts with +, return as is
   if (phone.startsWith('+')) {
     return phone;
   }
-  
+
   // If it's 10 digits, assume US number and add +1
   if (cleaned.length === 10) {
     return `+1${cleaned}`;
   }
-  
+
   // If it's 11 digits and starts with 1, add +
   if (cleaned.length === 11 && cleaned.startsWith('1')) {
     return `+${cleaned}`;
   }
-  
+
   // Otherwise, add + to the cleaned number
   return `+${cleaned}`;
 }
@@ -74,12 +74,14 @@ export async function signUp(data: SignUpData) {
   if (!authData.user) throw new Error('Failed to create user');
 
   // Create user profile in public.users table
-  const { error: profileError } = await supabase.from('users').insert({
-    id: authData.user.id,
-    user_type,
-    full_name,
-    phone: formattedPhone,
-  });
+  const { error: profileError } = await supabase
+    .from('users')
+    .insert({
+      id: authData.user.id,
+      user_type,
+      full_name,
+      phone: formattedPhone,
+    } as any);
 
   if (profileError) throw profileError;
 
@@ -136,12 +138,14 @@ export async function verifyOTP(data: VerifyOTPData) {
 
   // Create user profile if it doesn't exist
   if (!existingUser) {
-    const { error: profileError } = await supabase.from('users').insert({
-      id: authData.user.id,
-      user_type,
-      full_name,
-      phone: formattedPhone,
-    });
+    const { error: profileError } = await supabase
+      .from('users')
+      .insert({
+        id: authData.user.id,
+        user_type,
+        full_name,
+        phone: formattedPhone,
+      } as any);
 
     if (profileError) throw profileError;
   }
@@ -183,7 +187,7 @@ export async function signOut() {
 export async function resetPassword(phone: string) {
   // Format phone to E.164
   const formattedPhone = formatPhoneE164(phone);
-  
+
   const { error } = await supabase.auth.signInWithOtp({
     phone: formattedPhone,
   });
