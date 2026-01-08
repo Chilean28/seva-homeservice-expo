@@ -13,15 +13,60 @@ export interface SignInData {
   password: string;
 }
 
+export interface SignUpWithOTPData {
+  phone: string;
+  full_name: string;
+  user_type: UserType;
+}
+
+export interface VerifyOTPData {
+  phone: string;
+  token: string;
+  full_name: string;
+  user_type: UserType;
+}
+
 /**
- * Sign up a new user with phone and password
+ * Format phone number to E.164 format
+ * E.164 format: +[country code][number] (e.g., +13334445555)
+ */
+export function formatPhoneE164(phone: string): string {
+  // Remove all non-digit characters
+  const cleaned = phone.replace(/\D/g, '');
+  
+  // If it already starts with +, return as is
+  if (phone.startsWith('+')) {
+    return phone;
+  }
+  
+  // If it's 10 digits, assume US number and add +1
+  if (cleaned.length === 10) {
+    return `+1${cleaned}`;
+  }
+  
+  // If it's 11 digits and starts with 1, add +
+  if (cleaned.length === 11 && cleaned.startsWith('1')) {
+    return `+${cleaned}`;
+  }
+  
+  // Otherwise, add + to the cleaned number
+  return `+${cleaned}`;
+}
+
+/**
+ * Sign up with phone and password (requires phone auth enabled in Supabase)
+ * Note: Phone must be in E.164 format (e.g., +13334445555)
+ * For production, consider using OTP-based signup instead
  */
 export async function signUp(data: SignUpData) {
   const { phone, password, full_name, user_type } = data;
 
-  // Create auth user with phone
+  // Format phone to E.164
+  const formattedPhone = formatPhoneE164(phone);
+
+  // Create auth user with phone and password
   const { data: authData, error: authError } = await supabase.auth.signUp({
-    phone,
+    phone: formattedPhone,
     password,
   });
 
@@ -33,7 +78,7 @@ export async function signUp(data: SignUpData) {
     id: authData.user.id,
     user_type,
     full_name,
-    phone,
+    phone: formattedPhone,
   });
 
   if (profileError) throw profileError;
@@ -42,12 +87,81 @@ export async function signUp(data: SignUpData) {
 }
 
 /**
+ * Sign up with OTP (recommended for production)
+ * User will receive an SMS with a verification code
+ */
+export async function signUpWithOTP(data: SignUpWithOTPData) {
+  const { phone, full_name, user_type } = data;
+
+  // Format phone to E.164
+  const formattedPhone = formatPhoneE164(phone);
+
+  // Send OTP to phone
+  const { data: otpData, error: otpError } = await supabase.auth.signInWithOtp({
+    phone: formattedPhone,
+  });
+
+  if (otpError) throw otpError;
+
+  // Store user data temporarily for verification step
+  // You might want to use local storage or return this to the app
+  return { ...otpData, full_name, user_type, phone: formattedPhone };
+}
+
+/**
+ * Verify OTP and complete signup
+ */
+export async function verifyOTP(data: VerifyOTPData) {
+  const { phone, token, full_name, user_type } = data;
+
+  // Format phone to E.164
+  const formattedPhone = formatPhoneE164(phone);
+
+  // Verify the OTP
+  const { data: authData, error: verifyError } = await supabase.auth.verifyOtp({
+    phone: formattedPhone,
+    token,
+    type: 'sms',
+  });
+
+  if (verifyError) throw verifyError;
+  if (!authData.user) throw new Error('Failed to verify OTP');
+
+  // Check if user profile already exists
+  const { data: existingUser } = await supabase
+    .from('users')
+    .select('id')
+    .eq('id', authData.user.id)
+    .single();
+
+  // Create user profile if it doesn't exist
+  if (!existingUser) {
+    const { error: profileError } = await supabase.from('users').insert({
+      id: authData.user.id,
+      user_type,
+      full_name,
+      phone: formattedPhone,
+    });
+
+    if (profileError) throw profileError;
+  }
+
+  return authData;
+}
+
+/**
  * Sign in with phone and password
+ * Note: Phone must be in E.164 format (e.g., +13334445555)
+ * Requires phone auth with password enabled in Supabase project settings
  */
 export async function signIn(data: SignInData) {
   const { phone, password } = data;
+
+  // Format phone to E.164
+  const formattedPhone = formatPhoneE164(phone);
+
   const { data: authData, error } = await supabase.auth.signInWithPassword({
-    phone,
+    phone: formattedPhone,
     password,
   });
 
@@ -67,8 +181,11 @@ export async function signOut() {
  * Reset password (send OTP to phone)
  */
 export async function resetPassword(phone: string) {
+  // Format phone to E.164
+  const formattedPhone = formatPhoneE164(phone);
+  
   const { error } = await supabase.auth.signInWithOtp({
-    phone,
+    phone: formattedPhone,
   });
   if (error) throw error;
 }

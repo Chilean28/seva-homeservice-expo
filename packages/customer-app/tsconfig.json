@@ -3,8 +3,12 @@
   "compilerOptions": {
     "strict": true,
     "paths": {
-      "@/*": ["./*"],
-      "@seva/shared": ["../shared/src"]
+      "@/*": [
+        "./*"
+      ],
+      "@seva/shared": [
+        "../shared/src"
+      ]
     }
   },
   "include": [

@@ -1,6 +1,6 @@
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { useAuth } from '@seva/shared';
 import { router } from 'expo-router';
+import { Alert, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
@@ -43,17 +43,17 @@ export default function ProfileScreen() {
           <Text style={styles.menuText}>Edit Profile</Text>
           <Text style={styles.arrow}>→</Text>
         </TouchableOpacity>
-        
+
         <TouchableOpacity style={styles.menuItem}>
           <Text style={styles.menuText}>Payment Methods</Text>
           <Text style={styles.arrow}>→</Text>
         </TouchableOpacity>
-        
+
         <TouchableOpacity style={styles.menuItem}>
           <Text style={styles.menuText}>Notifications</Text>
           <Text style={styles.arrow}>→</Text>
         </TouchableOpacity>
-        
+
         <TouchableOpacity style={styles.menuItem}>
           <Text style={styles.menuText}>Help & Support</Text>
           <Text style={styles.arrow}>→</Text>

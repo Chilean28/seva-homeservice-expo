@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 const SERVICES = [
   { id: '1', name: 'House Cleaning', price: '$50/hr', icon: '🧹' },
