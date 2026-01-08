@@ -1,17 +1,22 @@
 {
-  "name": "seva-homeservice",
+  "name": "@seva/customer-app",
+  "main": "expo-router/entry",
   "version": "1.0.0",
-  "private": true,
   "scripts": {
-    "customer": "cd packages/customer-app && pnpm start",
-    "worker": "cd packages/worker-app && pnpm start",
-    "install:all": "pnpm install"
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "lint": "expo lint"
   },
   "dependencies": {
+    "@seva/shared": "workspace:*",
     "@expo/vector-icons": "^15.0.3",
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.8",
+    "@react-native-async-storage/async-storage": "^1.21.0",
+    "@supabase/supabase-js": "^2.39.7",
     "expo": "~54.0.30",
     "expo-constants": "~18.0.12",
     "expo-font": "~14.0.10",
@@ -32,7 +37,8 @@
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
-    "react-native-web": "~0.21.0"
+    "react-native-web": "~0.21.0",
+    "react-native-url-polyfill": "^2.0.0"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
