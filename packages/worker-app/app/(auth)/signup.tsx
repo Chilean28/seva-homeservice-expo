@@ -14,7 +14,7 @@ import {
 import { Link, router } from 'expo-router';
 import { useAuth, UserType } from '@seva/shared';
 
-export default function SignUpScreen() {
+export default function WorkerSignUpScreen() {
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -43,9 +43,12 @@ export default function SignUpScreen() {
         phone,
         password,
         full_name: fullName,
-        user_type: UserType.CUSTOMER,
+        user_type: UserType.WORKER,
       });
-      Alert.alert('Success', 'Account created successfully!');
+      Alert.alert(
+        'Success',
+        'Worker account created! Complete your profile to start receiving jobs.'
+      );
       router.replace('/(tabs)');
     } catch (error: any) {
       Alert.alert('Sign Up Failed', error.message || 'An error occurred during sign up');
@@ -62,8 +65,9 @@ export default function SignUpScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.content}>
           <View style={styles.header}>
-            <Text style={styles.title}>Create Account</Text>
-            <Text style={styles.subtitle}>Sign up to get started</Text>
+            <Text style={styles.badge}>WORKER</Text>
+            <Text style={styles.title}>Join as Worker</Text>
+            <Text style={styles.subtitle}>Start earning with your skills</Text>
           </View>
 
           <View style={styles.form}>
@@ -110,7 +114,7 @@ export default function SignUpScreen() {
               {loading ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.buttonText}>Create Account</Text>
+                <Text style={styles.buttonText}>Create Worker Account</Text>
               )}
             </TouchableOpacity>
 
@@ -144,6 +148,13 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: 48,
+  },
+  badge: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#007AFF',
+    marginBottom: 16,
+    letterSpacing: 1,
   },
   title: {
     fontSize: 32,

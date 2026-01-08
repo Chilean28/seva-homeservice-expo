@@ -13,7 +13,7 @@ import {
 import { Link, router } from 'expo-router';
 import { useAuth } from '@seva/shared';
 
-export default function LoginScreen() {
+export default function WorkerLoginScreen() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -43,8 +43,9 @@ export default function LoginScreen() {
     >
       <View style={styles.content}>
         <View style={styles.header}>
+          <Text style={styles.badge}>WORKER</Text>
           <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to continue</Text>
+          <Text style={styles.subtitle}>Sign in to your worker account</Text>
         </View>
 
         <View style={styles.form}>
@@ -85,10 +86,10 @@ export default function LoginScreen() {
           </TouchableOpacity>
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Don't have an account? </Text>
+            <Text style={styles.footerText}>New worker? </Text>
             <Link href="/(auth)/signup" asChild>
               <TouchableOpacity>
-                <Text style={styles.linkText}>Sign Up</Text>
+                <Text style={styles.linkText}>Create Account</Text>
               </TouchableOpacity>
             </Link>
           </View>
@@ -110,6 +111,13 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: 48,
+  },
+  badge: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#007AFF',
+    marginBottom: 16,
+    letterSpacing: 1,
   },
   title: {
     fontSize: 32,
