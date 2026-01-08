@@ -1,4 +1,4 @@
-import { UserType, BookingStatus } from './enums';
+import { BookingStatus, UserType } from './enums';
 
 export interface User {
   id: string;

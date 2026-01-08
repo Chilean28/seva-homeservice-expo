@@ -29,14 +29,15 @@ export interface VerifyOTPData {
 /**
  * Format phone number to E.164 format
  * E.164 format: +[country code][number] (e.g., +13334445555)
+ * Properly handles inputs like: +1-333-444-5555, (333) 444-5555, 3334445555
  */
 export function formatPhoneE164(phone: string): string {
-  // Remove all non-digit characters
+  // Remove all non-digit characters first (including from numbers starting with +)
   const cleaned = phone.replace(/\D/g, '');
 
-  // If it already starts with +, return as is
-  if (phone.startsWith('+')) {
-    return phone;
+  // If the original started with + and we have a valid cleaned number, prepend +
+  if (phone.trim().startsWith('+') && cleaned.length >= 10) {
+    return `+${cleaned}`;
   }
 
   // If it's 10 digits, assume US number and add +1

@@ -27,8 +27,10 @@ export default function SignUpScreen() {
       return;
     }
 
-    if (phone.length < 10) {
-      Alert.alert('Error', 'Please enter a valid phone number');
+    // Validate phone by counting digits only
+    const phoneDigits = phone.replace(/\D/g, '');
+    if (phoneDigits.length < 10 || phoneDigits.length > 15) {
+      Alert.alert('Error', 'Please enter a valid phone number (10-15 digits)');
       return;
     }
 
