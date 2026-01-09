@@ -1,18 +1,18 @@
+import { useAuth, UserType } from '@seva/shared';
+import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { Link, router } from 'expo-router';
-import { useAuth, UserType } from '@seva/shared';
 
 export default function WorkerSignUpScreen() {
   const [fullName, setFullName] = useState('');

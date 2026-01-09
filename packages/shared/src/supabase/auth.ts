@@ -2,14 +2,14 @@ import { UserType } from '../types/enums';
 import { supabase } from './client';
 
 export interface SignUpData {
-  phone: string;
+  email: string;
   password: string;
   full_name: string;
   user_type: UserType;
 }
 
 export interface SignInData {
-  phone: string;
+  email: string;
   password: string;
 }
 
@@ -55,20 +55,21 @@ export function formatPhoneE164(phone: string): string {
 }
 
 /**
- * Sign up with phone and password (requires phone auth enabled in Supabase)
- * Note: Phone must be in E.164 format (e.g., +13334445555)
- * For production, consider using OTP-based signup instead
+ * Sign up with email and password
  */
 export async function signUp(data: SignUpData) {
-  const { phone, password, full_name, user_type } = data;
+  const { email, password, full_name, user_type } = data;
 
-  // Format phone to E.164
-  const formattedPhone = formatPhoneE164(phone);
-
-  // Create auth user with phone and password
+  // Create auth user with email and password
   const { data: authData, error: authError } = await supabase.auth.signUp({
-    phone: formattedPhone,
+    email,
     password,
+    options: {
+      data: {
+        full_name,
+        user_type,
+      },
+    },
   });
 
   if (authError) throw authError;
@@ -81,7 +82,7 @@ export async function signUp(data: SignUpData) {
       id: authData.user.id,
       user_type,
       full_name,
-      phone: formattedPhone,
+      email,
     } as any);
 
   if (profileError) throw profileError;
@@ -155,18 +156,13 @@ export async function verifyOTP(data: VerifyOTPData) {
 }
 
 /**
- * Sign in with phone and password
- * Note: Phone must be in E.164 format (e.g., +13334445555)
- * Requires phone auth with password enabled in Supabase project settings
+ * Sign in with email and password
  */
 export async function signIn(data: SignInData) {
-  const { phone, password } = data;
-
-  // Format phone to E.164
-  const formattedPhone = formatPhoneE164(phone);
+  const { email, password } = data;
 
   const { data: authData, error } = await supabase.auth.signInWithPassword({
-    phone: formattedPhone,
+    email,
     password,
   });
 
@@ -183,15 +179,10 @@ export async function signOut() {
 }
 
 /**
- * Reset password (send OTP to phone)
+ * Reset password (send reset email)
  */
-export async function resetPassword(phone: string) {
-  // Format phone to E.164
-  const formattedPhone = formatPhoneE164(phone);
-
-  const { error } = await supabase.auth.signInWithOtp({
-    phone: formattedPhone,
-  });
+export async function resetPassword(email: string) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email);
   if (error) throw error;
 }
 

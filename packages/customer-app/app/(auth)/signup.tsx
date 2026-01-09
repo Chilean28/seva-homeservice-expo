@@ -1,36 +1,36 @@
+import { useAuth, UserType } from '@seva/shared';
+import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  Alert,
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { Link, router } from 'expo-router';
-import { useAuth, UserType } from '@seva/shared';
 
 export default function SignUpScreen() {
   const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { signUp } = useAuth();
 
   const handleSignUp = async () => {
-    if (!fullName || !phone || !password) {
+    if (!fullName || !email || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
-    // Validate phone by counting digits only
-    const phoneDigits = phone.replace(/\D/g, '');
-    if (phoneDigits.length < 10 || phoneDigits.length > 15) {
-      Alert.alert('Error', 'Please enter a valid phone number (10-15 digits)');
+    // Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
 
@@ -42,12 +42,12 @@ export default function SignUpScreen() {
     setLoading(true);
     try {
       await signUp({
-        phone,
+        email,
         password,
         full_name: fullName,
         user_type: UserType.CUSTOMER,
       });
-      Alert.alert('Success', 'Account created successfully!');
+      Alert.alert('Success', 'Account created successfully! Please check your email to verify your account.');
       router.replace('/(tabs)');
     } catch (error: any) {
       Alert.alert('Sign Up Failed', error.message || 'An error occurred during sign up');
@@ -83,12 +83,13 @@ export default function SignUpScreen() {
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
-                placeholder="Phone Number"
+                placeholder="Email"
                 placeholderTextColor="#999"
-                value={phone}
-                onChangeText={setPhone}
-                keyboardType="phone-pad"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
                 autoCapitalize="none"
+                autoComplete="email"
               />
             </View>
 

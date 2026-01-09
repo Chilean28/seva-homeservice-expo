@@ -10,7 +10,8 @@ CREATE TABLE public.users (
   id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   user_type user_type NOT NULL,
   full_name TEXT NOT NULL,
-  phone TEXT NOT NULL,
+  email TEXT NOT NULL,
+  phone TEXT,
   avatar_url TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
