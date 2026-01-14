@@ -16,21 +16,21 @@ import {
 
 export default function WorkerSignUpScreen() {
   const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { signUp } = useAuth();
 
   const handleSignUp = async () => {
-    if (!fullName || !phone || !password) {
+    if (!fullName || !email || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
-    // Validate phone by counting digits only
-    const phoneDigits = phone.replace(/\D/g, '');
-    if (phoneDigits.length < 10 || phoneDigits.length > 15) {
-      Alert.alert('Error', 'Please enter a valid phone number (10-15 digits)');
+    // Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      Alert.alert('Error', 'Please enter a valid email address');
       return;
     }
 
@@ -42,7 +42,7 @@ export default function WorkerSignUpScreen() {
     setLoading(true);
     try {
       await signUp({
-        phone,
+        email,
         password,
         full_name: fullName,
         user_type: UserType.WORKER,
@@ -87,12 +87,13 @@ export default function WorkerSignUpScreen() {
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
-                placeholder="Phone Number"
+                placeholder="Email"
                 placeholderTextColor="#999"
-                value={phone}
-                onChangeText={setPhone}
-                keyboardType="phone-pad"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
                 autoCapitalize="none"
+                autoComplete="email"
               />
             </View>
 

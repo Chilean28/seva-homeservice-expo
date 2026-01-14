@@ -14,23 +14,23 @@ import { Link, router } from 'expo-router';
 import { useAuth } from '@seva/shared';
 
 export default function WorkerLoginScreen() {
-  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const { signIn } = useAuth();
 
   const handleLogin = async () => {
-    if (!phone || !password) {
+    if (!email || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
     setLoading(true);
     try {
-      await signIn({ phone, password });
+      await signIn({ email, password });
       router.replace('/(tabs)');
     } catch (error: any) {
-      Alert.alert('Login Failed', error.message || 'Invalid phone number or password');
+      Alert.alert('Login Failed', error.message || 'Invalid email or password');
     } finally {
       setLoading(false);
     }
@@ -52,12 +52,13 @@ export default function WorkerLoginScreen() {
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.input}
-              placeholder="Phone Number"
+              placeholder="Email"
               placeholderTextColor="#999"
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
               autoCapitalize="none"
+              autoComplete="email"
             />
           </View>
 
