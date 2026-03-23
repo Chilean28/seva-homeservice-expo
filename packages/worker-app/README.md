@@ -13,7 +13,10 @@ Worker-facing mobile application for managing jobs and earnings.
 
 ## Running
 
+From the worker-app package directory:
+
 ```bash
+cd packages/worker-app
 pnpm start
 ```
 
@@ -21,6 +24,8 @@ Then press:
 - `i` for iOS simulator
 - `a` for Android emulator
 - `w` for web
+
+**Web:** Ensure `.env` has `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY`. If the app doesn’t load, run `npx expo start --web` from `packages/worker-app` and open the URL in your browser.
 
 ## Features
 
@@ -39,7 +44,8 @@ Then press:
 - `/(tabs)` - Main app (protected)
   - `/(tabs)/index` - Dashboard
   - `/(tabs)/jobs` - Job management
-  - `/(tabs)/earnings` - Earnings overview
+  - `/(tabs)/availability` - Availability (open for jobs + future schedule)
+  - `/(tabs)/profile/set-rates` - Hourly rates per service
   - `/(tabs)/profile` - Profile settings
 
 ## Authentication

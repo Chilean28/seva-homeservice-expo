@@ -19,10 +19,8 @@ config.resolver.nodeModulesPaths = [
 // 3. Force Metro to resolve (sub)dependencies only from the `nodeModulesPaths`
 config.resolver.disableHierarchicalLookup = true;
 
-// 4. Add this to resolve shared package and ensure proper module resolution
+// 4. Ensure expo-router resolves from workspace root
 config.resolver.extraNodeModules = {
-  '@seva/shared': path.resolve(workspaceRoot, 'packages/shared'),
-  // Ensure expo-router resolves from workspace root
   'expo-router': path.resolve(workspaceRoot, 'node_modules/expo-router'),
 };
 

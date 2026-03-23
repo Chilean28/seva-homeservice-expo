@@ -10,7 +10,7 @@ export function ExternalLink({ href, ...rest }: Props) {
     <Link
       target="_blank"
       {...rest}
-      href={href}
+      href={href as Parameters<typeof Link>[0]['href']}
       onPress={async (event) => {
         if (Platform.OS !== 'web') {
           event.preventDefault();

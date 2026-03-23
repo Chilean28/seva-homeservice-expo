@@ -21,10 +21,15 @@ expo-env.d.ts
 # Metro
 .metro-health-check*
 
-# debug
+# debug / IDE
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+.cursor/
+*.log
+
+# pnpm is the package manager for this repo (see README)
+package-lock.json
 
 # macOS
 .DS_Store
@@ -42,3 +47,12 @@ app-example
 # generated native folders
 /ios
 /android
+
+# --- Local / personal (not pushed) ---
+# Put private notes here instead of deleting shared docs:
+docs/private/
+# Scratch / one-off SQL you do not want on GitHub (canonical schema stays in database/*.sql):
+database/local/
+
+# Draft internal review notes (already tracked files: run `git rm --cached <path>` once)
+docs/*-REVIEW.md

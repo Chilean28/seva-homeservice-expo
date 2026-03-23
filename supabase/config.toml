@@ -1,0 +1,31 @@
+# Per-function config: allow invoke with anon key (no JWT) so Confirm Booking does not get 401.
+# See: https://supabase.com/docs/guides/functions/function-configuration
+[functions.create-checkout-session]
+verify_jwt = false
+
+[functions.charge-saved-card]
+verify_jwt = false
+
+[functions.get-payment-intent-from-session]
+verify_jwt = false
+
+[functions.serve-add-card-page]
+verify_jwt = false
+
+# verify_jwt = false so gateway forwards request; we validate JWT inside the function (header or body.access_token)
+[functions.attach-payment-method]
+verify_jwt = false
+
+# verify_jwt = false so gateway forwards request; we validate JWT inside (header or body.access_token)
+[functions.create-connect-onboarding-link]
+verify_jwt = false
+
+[functions.redirect-to-app]
+verify_jwt = false
+
+[functions.get-connect-payouts]
+verify_jwt = false
+
+# pg_net trigger sends x-internal-secret only (no JWT)
+[functions.charge-booking-on-complete]
+verify_jwt = false

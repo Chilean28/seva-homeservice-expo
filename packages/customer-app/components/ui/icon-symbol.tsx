@@ -1,6 +1,6 @@
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 import React from 'react';
-import { OpaqueColorValue, StyleProp, ViewStyle } from 'react-native';
+import { OpaqueColorValue, StyleProp, TextStyle } from 'react-native';
 
 const MAPPING = {
   'house.fill': 'home',
@@ -9,6 +9,8 @@ const MAPPING = {
   'person.fill': 'person',
   'chart.bar.fill': 'bar-chart',
   'dollarsign.circle.fill': 'attach-money',
+  'clipboard': 'assignment',
+  'chat': 'chat',
 } as Partial<Record<string, React.ComponentProps<typeof MaterialIcons>['name']>>;
 
 export type IconSymbolName = keyof typeof MAPPING;
@@ -22,7 +24,7 @@ export function IconSymbol({
   name: IconSymbolName;
   size?: number;
   color: string | OpaqueColorValue;
-  style?: StyleProp<ViewStyle>;
+  style?: StyleProp<TextStyle>;
 }) {
   return <MaterialIcons color={color} size={size} name={MAPPING[name]} style={style} />;
 }

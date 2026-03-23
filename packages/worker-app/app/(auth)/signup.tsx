@@ -1,4 +1,5 @@
-import { useAuth, UserType } from '@seva/shared';
+import { completeEmailOtpSignUp, requestEmailOtpSignUp } from '../../lib/supabase/auth';
+import { UserType } from '../../lib/types/enums';
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
 import {
@@ -14,37 +15,68 @@ import {
   View,
 } from 'react-native';
 
+type Step = 'form' | 'code';
+
 export default function WorkerSignUpScreen() {
-  const [fullName, setFullName] = useState('');
+  const [step, setStep] = useState<Step>('form');
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
-  const { signUp } = useAuth();
 
-  const handleSignUp = async () => {
-    if (!fullName || !email || !password) {
+  const validateForm = () => {
+    const name = username.trim();
+    if (!name || !email.trim() || !password || !confirmPassword) {
       Alert.alert('Error', 'Please fill in all fields');
-      return;
+      return false;
     }
-
-    // Validate email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!emailRegex.test(email.trim())) {
       Alert.alert('Error', 'Please enter a valid email address');
-      return;
+      return false;
     }
-
     if (password.length < 6) {
       Alert.alert('Error', 'Password must be at least 6 characters');
-      return;
+      return false;
     }
+    if (password !== confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match');
+      return false;
+    }
+    return true;
+  };
 
+  const handleSendCode = async () => {
+    if (!validateForm()) return;
     setLoading(true);
     try {
-      await signUp({
-        email,
+      await requestEmailOtpSignUp({ email: email.trim() });
+      setCode('');
+      setStep('code');
+      Alert.alert('Check your email', 'We sent a 6-digit code. Enter it below to finish signing up.');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Could not send code';
+      Alert.alert('Error', msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerify = async () => {
+    const digits = code.replace(/\D/g, '');
+    if (digits.length < 6) {
+      Alert.alert('Error', 'Enter the 6-digit code from your email');
+      return;
+    }
+    setLoading(true);
+    try {
+      await completeEmailOtpSignUp({
+        email: email.trim(),
+        token: digits,
         password,
-        full_name: fullName,
+        full_name: username.trim(),
         user_type: UserType.WORKER,
       });
       Alert.alert(
@@ -52,8 +84,23 @@ export default function WorkerSignUpScreen() {
         'Worker account created! Complete your profile to start receiving jobs.'
       );
       router.replace('/(tabs)');
-    } catch (error: any) {
-      Alert.alert('Sign Up Failed', error.message || 'An error occurred during sign up');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Invalid or expired code';
+      Alert.alert('Verification failed', msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!validateForm()) return;
+    setLoading(true);
+    try {
+      await requestEmailOtpSignUp({ email: email.trim() });
+      Alert.alert('Sent', 'We sent a new code to your email.');
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Could not resend';
+      Alert.alert('Error', msg);
     } finally {
       setLoading(false);
     }
@@ -69,66 +116,135 @@ export default function WorkerSignUpScreen() {
           <View style={styles.header}>
             <Text style={styles.badge}>WORKER</Text>
             <Text style={styles.title}>Join as Worker</Text>
-            <Text style={styles.subtitle}>Start earning with your skills</Text>
+            <Text style={styles.subtitle}>
+              {step === 'form'
+                ? 'Start earning with your skills'
+                : 'Enter the code we emailed you'}
+            </Text>
           </View>
 
-          <View style={styles.form}>
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                placeholder="Full Name"
-                placeholderTextColor="#999"
-                value={fullName}
-                onChangeText={setFullName}
-                autoCapitalize="words"
-              />
-            </View>
+          {step === 'form' ? (
+            <View style={styles.form}>
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Username"
+                  placeholderTextColor="#999"
+                  value={username}
+                  onChangeText={setUsername}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoComplete="username"
+                />
+              </View>
 
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                placeholder="Email"
-                placeholderTextColor="#999"
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoComplete="email"
-              />
-            </View>
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Email"
+                  placeholderTextColor="#999"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                />
+              </View>
 
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={styles.input}
-                placeholder="Password (min 6 characters)"
-                placeholderTextColor="#999"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                autoCapitalize="none"
-              />
-            </View>
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Password (min 6 characters)"
+                  placeholderTextColor="#999"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoComplete="password-new"
+                />
+              </View>
 
-            <TouchableOpacity
-              style={[styles.button, loading && styles.buttonDisabled]}
-              onPress={handleSignUp}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.buttonText}>Create Worker Account</Text>
-              )}
-            </TouchableOpacity>
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Re-enter password"
+                  placeholderTextColor="#999"
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  autoComplete="password-new"
+                />
+              </View>
 
-            <View style={styles.footer}>
-              <Text style={styles.footerText}>Already have an account? </Text>
-              <Link href="/(auth)/login" asChild>
-                <TouchableOpacity>
-                  <Text style={styles.linkText}>Sign In</Text>
-                </TouchableOpacity>
-              </Link>
+              <TouchableOpacity
+                style={[styles.button, loading && styles.buttonDisabled]}
+                onPress={handleSendCode}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={styles.buttonText}>Send verification code</Text>
+                )}
+              </TouchableOpacity>
             </View>
+          ) : (
+            <View style={styles.form}>
+              <Text style={styles.emailHint}>{email.trim()}</Text>
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="6-digit code"
+                  placeholderTextColor="#999"
+                  value={code}
+                  onChangeText={setCode}
+                  keyboardType="number-pad"
+                  maxLength={8}
+                  autoCapitalize="none"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={[styles.button, loading && styles.buttonDisabled]}
+                onPress={handleVerify}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#000" />
+                ) : (
+                  <Text style={styles.buttonText}>Verify & create account</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.secondaryBtn}
+                onPress={handleResend}
+                disabled={loading}
+              >
+                <Text style={styles.secondaryBtnText}>Resend code</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.secondaryBtn}
+                onPress={() => {
+                  setStep('form');
+                  setCode('');
+                }}
+                disabled={loading}
+              >
+                <Text style={styles.secondaryBtnText}>Back</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>Already have an account? </Text>
+            <Link href="/(auth)/login" asChild>
+              <TouchableOpacity>
+                <Text style={styles.linkText}>Sign In</Text>
+              </TouchableOpacity>
+            </Link>
           </View>
         </View>
       </ScrollView>
@@ -155,7 +271,7 @@ const styles = StyleSheet.create({
   badge: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#007AFF',
+    color: '#F9A825',
     marginBottom: 16,
     letterSpacing: 1,
   },
@@ -172,6 +288,11 @@ const styles = StyleSheet.create({
   form: {
     width: '100%',
   },
+  emailHint: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 16,
+  },
   inputContainer: {
     marginBottom: 16,
   },
@@ -187,7 +308,7 @@ const styles = StyleSheet.create({
   },
   button: {
     height: 56,
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FFEB3B',
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -197,8 +318,18 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   buttonText: {
-    color: '#fff',
+    color: '#000',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  secondaryBtn: {
+    marginTop: 16,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  secondaryBtnText: {
+    color: '#F9A825',
+    fontSize: 15,
     fontWeight: '600',
   },
   footer: {
@@ -211,7 +342,7 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   linkText: {
-    color: '#007AFF',
+    color: '#F9A825',
     fontSize: 14,
     fontWeight: '600',
   },

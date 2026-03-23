@@ -1,31 +1,24 @@
 const { getDefaultConfig } = require('expo/metro-config');
+const { wrapWithReanimatedMetroConfig } = require('react-native-reanimated/metro-config');
 const path = require('path');
 
-// Find the project and workspace directories
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, '../..');
 
 const config = getDefaultConfig(projectRoot);
 
-// 1. Watch all files within the monorepo
 config.watchFolders = [workspaceRoot];
 
-// 2. Let Metro know where to resolve packages (prioritize workspace root)
 config.resolver.nodeModulesPaths = [
+  path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
-// 3. Tell Metro to look for source extensions
-config.resolver.sourceExts = ['js', 'jsx', 'json', 'ts', 'tsx', 'cjs', 'mjs'];
-
-// 4. Map the main entry point for the customer app
+// Single React instance: always resolve from workspace root (no react in customer-app/node_modules).
 config.resolver.extraNodeModules = {
-  // Ensure all @scope packages resolve from workspace root
-  ...require('module').builtinModules.reduce((acc, name) => {
-    acc[name] = path.join(workspaceRoot, 'node_modules', name);
-    return acc;
-  }, {}),
+  react: path.resolve(workspaceRoot, 'node_modules/react'),
+  'react-dom': path.resolve(workspaceRoot, 'node_modules/react-dom'),
+  'react-native': path.resolve(workspaceRoot, 'node_modules/react-native'),
 };
 
-module.exports = config;
-
+module.exports = wrapWithReanimatedMetroConfig(config);

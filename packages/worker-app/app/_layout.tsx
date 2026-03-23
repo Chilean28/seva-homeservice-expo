@@ -2,38 +2,166 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'react-native';
-import 'react-native-reanimated';
-import { AuthProvider, useAuth } from '@seva/shared';
-import { useEffect } from 'react';
+// Reanimated not imported at root: can cause "property is not writable" in dev builds. Use only in screens that need it.
+import Constants from 'expo-constants';
+import { AuthProvider, useAuth } from '../lib/contexts/AuthContext';
+import { PendingJobsProvider } from '../lib/contexts/PendingJobsContext';
+import { UnreadChatProvider } from '../lib/contexts/UnreadChatContext';
+import { useEffect, useState } from 'react';
 import { router, useSegments } from 'expo-router';
+import { ensureUserProfileAfterSession } from '../lib/supabase/auth';
+import { handleAuthCallbackDeepLink, isAuthCallbackDeepLink } from '../lib/supabase/handleAuthDeepLink';
+import { supabase } from '../lib/supabase/client';
+import { ActivityIndicator, View, StyleSheet, Text, Alert, Linking } from 'react-native';
+
+type WorkerCheck = 'idle' | 'loading' | 'allowed' | 'rejected';
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
-  const { user, loading } = useAuth();
+  const { user, loading, signOut } = useAuth();
   const segments = useSegments();
+  const [workerCheck, setWorkerCheck] = useState<WorkerCheck>('idle');
+
+  // Ensure only users with user_type = 'worker' can use the worker app
+  useEffect(() => {
+    if (!user?.id) {
+      setWorkerCheck('idle');
+      return;
+    }
+    setWorkerCheck('loading');
+    supabase
+      .from('users')
+      .select('user_type')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          setWorkerCheck('rejected');
+          return;
+        }
+        if ((data as { user_type: string }).user_type === 'worker') {
+          setWorkerCheck('allowed');
+        } else {
+          setWorkerCheck('rejected');
+        }
+      });
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (workerCheck === 'rejected') {
+      signOut().then(() => {
+        Alert.alert(
+          'Worker app only',
+          'This app is for workers only. Please use the customer app to book services.',
+          [{ text: 'OK' }]
+        );
+        router.replace('/(auth)/login');
+      });
+    }
+  }, [workerCheck, signOut]);
 
   useEffect(() => {
     if (loading) return;
+    const segs = segments as string[];
+    if (!segs?.length) return;
 
-    const inAuthGroup = segments[0] === '(auth)';
+    const inAuthGroup = segs[0] === '(auth)';
 
     if (!user && !inAuthGroup) {
       router.replace('/(auth)/login');
-    } else if (user && inAuthGroup) {
+    } else if (user && inAuthGroup && workerCheck === 'allowed') {
       router.replace('/(tabs)');
     }
-  }, [user, loading, segments]);
+  }, [user, loading, segments, workerCheck]);
+
+  // Push: skip in Expo Go (Android SDK 53+ removed remote push). Load module only in dev build / standalone.
+  useEffect(() => {
+    if (Constants.appOwnership === 'expo') return;
+    if (!user?.id || workerCheck !== 'allowed') return;
+    import('../lib/pushNotifications')
+      .then(({ registerPushToken }) => registerPushToken(user.id))
+      .catch((e) => console.warn('[Push] Registration error', e));
+  }, [user?.id, workerCheck]);
+
+  // Email confirmation deep link (sevaworker:// or exp://…/auth/callback)
+  useEffect(() => {
+    const handleUrl = async (event: { url: string }) => {
+      const url = event?.url;
+      if (!url || !isAuthCallbackDeepLink(url)) return;
+      try {
+        const res = await handleAuthCallbackDeepLink(supabase, url);
+        if (res.ok) {
+          await ensureUserProfileAfterSession();
+        } else if (res.error) {
+          Alert.alert('Email confirmation', res.error);
+        }
+      } catch (e) {
+        console.warn('[Auth] Deep link error', e);
+      }
+    };
+    const sub = Linking.addEventListener('url', handleUrl);
+    Linking.getInitialURL().then((u) => {
+      if (u) handleUrl({ url: u });
+    });
+    return () => sub.remove();
+  }, []);
+
+  if (loading) {
+    return (
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <View style={styles.checkingRoot}>
+          <ActivityIndicator size="large" color="#000" />
+          <Text style={styles.checkingText}>Loading…</Text>
+        </View>
+        <StatusBar style="auto" />
+      </ThemeProvider>
+    );
+  }
+
+  // After login, show loading while we verify user is a worker
+  if (user && workerCheck === 'loading') {
+    return (
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <View style={styles.checkingRoot}>
+          <ActivityIndicator size="large" color="#000" />
+          <Text style={styles.checkingText}>Checking account…</Text>
+        </View>
+        <StatusBar style="auto" />
+      </ThemeProvider>
+    );
+  }
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      </Stack>
-      <StatusBar style="auto" />
+      <UnreadChatProvider>
+        <PendingJobsProvider>
+        <Stack>
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="conversation/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="job/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="payouts" options={{ headerShown: false }} />
+        </Stack>
+        </PendingJobsProvider>
+        <StatusBar style="auto" />
+      </UnreadChatProvider>
     </ThemeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  checkingRoot: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    gap: 12,
+  },
+  checkingText: {
+    fontSize: 16,
+    color: '#666',
+  },
+});
 
 export default function RootLayout() {
   return (

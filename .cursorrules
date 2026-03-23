@@ -1,0 +1,39 @@
+# Seva – Cursor rules
+
+You are working on Seva, a pnpm monorepo React Native app (customer + worker apps, shared package). Backend: Supabase. Payments: Stripe (customer app only).
+
+## NEVER DO THESE — they will break the app
+
+- Never add StripeProvider anywhere except customer-app/app/_layout.tsx
+- Never add router.replace('/(tabs)') in login or signup screens — redirect is handled in root _layout
+- Never import Reanimated in any root _layout file (customer or worker)
+- Never put app-specific logic in packages/shared
+- Never hardcode Stripe secret key — it lives in Supabase Edge Function secrets only
+- Never write a Supabase query without considering the RLS policy for that table
+
+## ALWAYS DO THESE
+
+- Keep lib/types/database.ts in sync after any schema change (run pnpm supabase:types when applicable)
+- Add cleanup return to every useEffect that opens a Supabase Realtime channel (channel.unsubscribe())
+- Use optional chaining (?.) on all Supabase response data before accessing properties
+- Add loading, error, and empty states to every screen that fetches data
+- Run pnpm typecheck after any type-related change
+- For new native iOS packages that live under customer-app/node_modules for CocoaPods, add them to nativeTransitive in customer-app/scripts/link-react-native.js
+
+## STACK
+
+- Expo SDK 54, React 19.1, RN 0.81.5, Expo Router, Supabase, Stripe (customer only)
+- pnpm hoisted monorepo (nodeLinker: hoisted)
+- Database source of truth: database/schema.sql + database/rls-policies.sql + database/stripe-bookings.sql
+
+## SHARED PACKAGE
+
+Only add to @seva/shared if BOTH apps need it. If only one app needs it, keep it in that app.
+
+## FEATURE DEVELOPMENT ORDER
+
+When building a new feature, prefer this order: (1) SQL migration + RLS, (2) supabase gen types / database.ts, (3) data layer in lib/, (4) hook with loading/error/data, (5) UI component, (6) screen wiring. Schema first, then types, then UI.
+
+## DEBUG
+
+When something breaks, prefer a minimal fix. Do not rewrite unrelated code. Check .cursorrules for violations before suggesting changes.

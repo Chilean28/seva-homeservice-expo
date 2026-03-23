@@ -1,37 +1,126 @@
+import { APP_SCREEN_HEADER_BG, appScreenHeaderBarPadding, appScreenHeaderTitleStyle } from '@seva/shared';
+import { supabase } from '@/lib/supabase/client';
+import { Ionicons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { router } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-const SERVICES = [
-  { id: '1', name: 'House Cleaning', price: '$50/hr', icon: '🧹' },
-  { id: '2', name: 'Plumbing', price: '$60/hr', icon: '🔧' },
-  { id: '3', name: 'Electrical', price: '$70/hr', icon: '⚡' },
-  { id: '4', name: 'Moving', price: '$80/hr', icon: '📦' },
-  { id: '5', name: 'Painting', price: '$45/hr', icon: '🎨' },
-  { id: '6', name: 'Gardening', price: '$40/hr', icon: '🌱' },
-  { id: '7', name: 'AC Repair', price: '$65/hr', icon: '❄️' },
-  { id: '8', name: 'Carpentry', price: '$55/hr', icon: '🪚' },
-];
+type ServiceRow = { id: string; name: string; base_price: number };
+
+// Dark, vibrant colors for the icon circle accents
+const SERVICE_COLORS = ['#1E40AF', '#115E59', '#166534', '#5B21B6', '#B45309', '#9F1239', '#4338CA', '#C2410C', '#A21CAF', '#9A3412'];
+
+const SERVICE_ICONS: Record<string, React.ComponentProps<typeof MaterialCommunityIcons>['name']> = {
+  cleaning: 'broom',
+  'mounting/assembly': 'hammer-wrench',
+  handyman: 'wrench',
+  plumbing: 'water-pump',
+  electrical: 'flash',
+  moving: 'truck-fast-outline',
+  'pest control': 'shield-bug-outline',
+  landscaping: 'leaf',
+  painting: 'brush',
+  'appliance repair/installation': 'toolbox-outline',
+  'aircon service (ac cleaning)': 'air-conditioner',
+  'smart home / cctv installation': 'cctv',
+  default: 'tools',
+};
+
+function iconFor(name: string): React.ComponentProps<typeof MaterialCommunityIcons>['name'] {
+  const key = name.toLowerCase();
+  return SERVICE_ICONS[key] ?? SERVICE_ICONS.default;
+}
 
 export default function ServicesScreen() {
-  return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>All Services</Text>
-        <Text style={styles.subtitle}>Choose a service to book</Text>
-      </View>
+  const [services, setServices] = useState<ServiceRow[]>([]);
+  const [loading, setLoading] = useState(true);
 
-      <View style={styles.list}>
-        {SERVICES.map((service) => (
-          <TouchableOpacity key={service.id} style={styles.serviceCard}>
-            <Text style={styles.icon}>{service.icon}</Text>
-            <View style={styles.serviceInfo}>
-              <Text style={styles.serviceName}>{service.name}</Text>
-              <Text style={styles.servicePrice}>{service.price}</Text>
-            </View>
-            <Text style={styles.arrow}>→</Text>
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      const { data } = await supabase
+        .from('services')
+        .select('id, name, base_price')
+        .eq('is_active', true)
+        .order('name', { ascending: true });
+      if (cancelled) return;
+      setServices((data as ServiceRow[]) ?? []);
+      setLoading(false);
+    })().catch(() => {
+      if (cancelled) return;
+      setServices([]);
+      setLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const displayServices = useMemo(
+    () =>
+      services.length
+        ? services
+        : ([
+            { id: '1', name: 'Cleaning', base_price: 25 },
+            { id: '2', name: 'Mounting/Assembly', base_price: 55.5 },
+            { id: '3', name: 'Handyman', base_price: 45 },
+            { id: '4', name: 'Plumbing', base_price: 65 },
+            { id: '5', name: 'Electrical', base_price: 70 },
+            { id: '6', name: 'Moving', base_price: 50 },
+            { id: '7', name: 'Pest Control', base_price: 80 },
+            { id: '8', name: 'Landscaping', base_price: 40 },
+            { id: '9', name: 'Painting', base_price: 55 },
+            { id: '10', name: 'Appliance Repair/Installation', base_price: 60 },
+            { id: '11', name: 'Aircon Service (AC Cleaning)', base_price: 65 },
+            { id: '12', name: 'Smart Home / CCTV Installation', base_price: 55 },
+          ] as ServiceRow[]),
+    [services]
+  );
+
+  return (
+    <View style={styles.container}>
+      <SafeAreaView style={styles.safe} edges={['top']}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} hitSlop={12} style={styles.backBtn}>
+            <Ionicons name="chevron-back" size={24} color="#000" />
           </TouchableOpacity>
-        ))}
-      </View>
-    </ScrollView>
+          <Text style={styles.title}>All services</Text>
+          <View style={styles.headerRight} />
+        </View>
+      </SafeAreaView>
+
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {loading && services.length === 0 ? (
+          <Text style={styles.loadingText}>Loading…</Text>
+        ) : (
+          <View style={styles.grid}>
+            {displayServices.map((s, idx) => (
+              <TouchableOpacity
+                key={s.id}
+                style={styles.tile}
+                activeOpacity={0.85}
+                onPress={() =>
+                  router.push({
+                    pathname: '/search',
+                    params: { serviceId: s.id, serviceName: s.name },
+                  })
+                }
+              >
+                <View style={[styles.tileIconWrap, { backgroundColor: SERVICE_COLORS[idx % SERVICE_COLORS.length] }]}>
+                  <MaterialCommunityIcons name={iconFor(s.name)} size={22} color="#FFFFFF" />
+                </View>
+                <Text style={styles.tileName} numberOfLines={2}>
+                  {s.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -40,53 +129,48 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#F8F9FA',
   },
+  safe: { backgroundColor: APP_SCREEN_HEADER_BG },
   header: {
-    padding: 24,
-    paddingTop: 16,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#000',
-  },
-  subtitle: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 4,
-  },
-  list: {
-    paddingHorizontal: 24,
-    gap: 12,
-    paddingBottom: 100,
-  },
-  serviceCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: APP_SCREEN_HEADER_BG,
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
+    ...appScreenHeaderBarPadding,
   },
-  icon: {
-    fontSize: 32,
-    marginRight: 16,
-  },
-  serviceInfo: {
+  backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
+  headerRight: { width: 40, height: 40 },
+  title: {
     flex: 1,
+    textAlign: 'center',
+    ...appScreenHeaderTitleStyle,
   },
-  serviceName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
+  scroll: { flex: 1 },
+  scrollContent: { padding: 16, paddingBottom: 120 },
+  loadingText: { textAlign: 'center', color: '#666', paddingVertical: 24 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  tile: {
+    width: '23%',
+    aspectRatio: 1,
+    borderRadius: 14,
+    padding: 10,
+    marginBottom: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#EEEEEE',
+    shadowColor: '#7A7000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.07,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  servicePrice: {
-    fontSize: 14,
-    color: '#007AFF',
-    marginTop: 2,
+  tileIconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
   },
-  arrow: {
-    fontSize: 20,
-    color: '#999',
-  },
+  tileName: { fontSize: 11, fontWeight: '700', color: '#1a1a1a', textAlign: 'center' },
 });

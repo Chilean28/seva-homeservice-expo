@@ -1,17 +1,19 @@
-// Supabase client
-export * from './supabase/auth';
-export type { SignInData, SignUpData, SignUpWithOTPData, VerifyOTPData } from './supabase/auth';
-export { supabase } from './supabase/client';
-
-// Types
-export * from './types/database';
-export * from './types/enums';
-
-// Contexts
-export { AuthProvider, useAuth } from './contexts/AuthContext';
-
-// Utilities
-export * from './utils/helpers';
-
-// Real-time
-export * from './supabase/realtime';
+// Shared package entry. Export shared UI/utilities here.
+export { ErrorBoundary } from './ErrorBoundary';
+export { isJobChatOpen, JOB_CHAT_OPEN_HOURS } from './jobChatWindow';
+export { useRefreshOnAppActive } from './useRefreshOnAppActive';
+export {
+  BOOKING_DEFAULT_ESTIMATED_HOURS,
+  computeBookingTotalFromHours,
+  BOOKING_MIN_HOURLY_RATE,
+  BOOKING_MAX_HOURLY_RATE,
+} from './bookingPricing';
+export { isPendingBookingResponseExpired } from './bookingResponseExpiry';
+export {
+  APP_SCREEN_HEADER_BG,
+  APP_SCREEN_HEADER_PADDING_HORIZONTAL,
+  APP_SCREEN_HEADER_PADDING_TOP_INNER,
+  APP_SCREEN_HEADER_PADDING_BOTTOM,
+  appScreenHeaderTitleStyle,
+  appScreenHeaderBarPadding,
+} from './appScreenHeader';

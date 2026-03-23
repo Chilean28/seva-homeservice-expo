@@ -3,15 +3,20 @@ import {
   View,
   Text,
   TextInput,
+  Pressable,
   TouchableOpacity,
   StyleSheet,
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
-import { Link, router } from 'expo-router';
-import { useAuth } from '@seva/shared';
+import { Link } from 'expo-router';
+import { useAuth } from '../../lib/contexts/AuthContext';
+import { loginErrorMessage } from '../../lib/supabase/auth';
+
+const isWeb = Platform.OS === 'web';
 
 export default function WorkerLoginScreen() {
   const [email, setEmail] = useState('');
@@ -28,20 +33,24 @@ export default function WorkerLoginScreen() {
     setLoading(true);
     try {
       await signIn({ email, password });
-      router.replace('/(tabs)');
-    } catch (error: any) {
-      Alert.alert('Login Failed', error.message || 'Invalid email or password');
+      // Redirect to (tabs) is handled in app/_layout.tsx when user + workerCheck are set
+    } catch (error: unknown) {
+      Alert.alert('Login Failed', loginErrorMessage(error));
     } finally {
       setLoading(false);
     }
   };
 
+  const Wrapper = Platform.OS === 'web' ? View : KeyboardAvoidingView;
+  const wrapperProps = Platform.OS === 'web' ? {} : { behavior: Platform.OS === 'ios' ? 'padding' as const : 'height' as const };
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <View style={styles.content}>
+    <Wrapper style={styles.container} {...wrapperProps} pointerEvents="box-none">
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.header}>
           <Text style={styles.badge}>WORKER</Text>
           <Text style={styles.title}>Welcome Back</Text>
@@ -74,17 +83,48 @@ export default function WorkerLoginScreen() {
             />
           </View>
 
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Sign In</Text>
-            )}
-          </TouchableOpacity>
+          {isWeb ? (
+            <View style={[styles.button, loading && styles.buttonDisabled]}>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  handleLogin();
+                }}
+                disabled={loading}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  margin: 0,
+                  padding: 0,
+                  border: 'none',
+                  borderRadius: 12,
+                  background: '#FFEB3B',
+                  color: '#000',
+                  fontSize: 16,
+                  fontWeight: 600,
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {loading ? 'Signing in...' : 'Sign In'}
+              </button>
+            </View>
+          ) : (
+            <Pressable
+              style={({ pressed }) => [styles.button, loading && styles.buttonDisabled, pressed && styles.buttonPressed]}
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator color="#000" />
+              ) : (
+                <Text style={styles.buttonText}>Sign In</Text>
+              )}
+            </Pressable>
+          )}
 
           <View style={styles.footer}>
             <Text style={styles.footerText}>New worker? </Text>
@@ -95,8 +135,8 @@ export default function WorkerLoginScreen() {
             </Link>
           </View>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </ScrollView>
+    </Wrapper>
   );
 }
 
@@ -105,10 +145,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  content: {
+  scroll: {
     flex: 1,
+  },
+  content: {
+    flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
+    minHeight: Platform.OS === 'web' ? '100%' : undefined,
   },
   header: {
     marginBottom: 48,
@@ -116,7 +160,7 @@ const styles = StyleSheet.create({
   badge: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#007AFF',
+    color: '#F9A825',
     marginBottom: 16,
     letterSpacing: 1,
   },
@@ -148,17 +192,21 @@ const styles = StyleSheet.create({
   },
   button: {
     height: 56,
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FFEB3B',
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 24,
+    ...(Platform.OS === 'web' && { cursor: 'pointer' as const }),
   },
   buttonDisabled: {
     opacity: 0.6,
   },
+  buttonPressed: {
+    opacity: 0.85,
+  },
   buttonText: {
-    color: '#fff',
+    color: '#000',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -172,7 +220,7 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   linkText: {
-    color: '#007AFF',
+    color: '#F9A825',
     fontSize: 14,
     fontWeight: '600',
   },

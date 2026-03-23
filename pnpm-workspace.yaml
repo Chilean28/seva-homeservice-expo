@@ -1,1 +1,7 @@
+packages:
+  - 'packages/*'
+
+ignoredBuiltDependencies:
+  - unrs-resolver
+
 nodeLinker: hoisted

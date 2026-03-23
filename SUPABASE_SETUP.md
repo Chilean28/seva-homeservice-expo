@@ -1,97 +1,83 @@
 # Supabase Setup Guide
 
-Your Supabase project is already created! Here's how to complete the setup:
+## Step 1: Environment Variables
 
-## ✅ Step 1: Environment Variables (Already Done!)
+Get your **Project URL** and **anon (public) key** from [Supabase Dashboard](https://supabase.com/dashboard) → your project → **Settings** → **API**.
 
-Your credentials are:
-- **Project URL**: `https://ezyrlckumtfmsipwddld.supabase.co`
-- **API Key**: `sb_publishable_5r5x4_VKlziYzzTstFFR4g_dblp-_PU`
+Create `.env` in each app (or use a setup script if you have one):
 
-Run the setup script to create `.env` files:
+**packages/customer-app/.env**
+```env
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+```
+
+**packages/worker-app/.env**
+```env
+EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+```
+
+You can copy from `.env.example` in each package:
 ```bash
-chmod +x scripts/setup-supabase.sh
-./scripts/setup-supabase.sh
+cp packages/customer-app/.env.example packages/customer-app/.env
+cp packages/worker-app/.env.example packages/worker-app/.env
+# Edit both .env files with your real credentials
 ```
 
-Or manually create the files:
+## Step 2: Database Schema and RLS
 
-**packages/customer-app/.env:**
-```
-EXPO_PUBLIC_SUPABASE_URL=https://ezyrlckumtfmsipwddld.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_5r5x4_VKlziYzzTstFFR4g_dblp-_PU
-```
+1. Open your project in the [Supabase Dashboard](https://supabase.com/dashboard) and go to **SQL Editor**.
 
-**packages/worker-app/.env:**
-```
-EXPO_PUBLIC_SUPABASE_URL=https://ezyrlckumtfmsipwddld.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_5r5x4_VKlziYzzTstFFR4g_dblp-_PU
-```
+2. **Run the schema**
+   - New query → paste the contents of **`database/schema.sql`** (in this repo root).
+   - Run (Cmd/Ctrl + Enter).
+   - You should see "Success. No rows returned".
 
-## 🗄️ Step 2: Set Up Database Schema
+3. **Run the RLS policies**
+   - New query → paste the contents of **`database/rls-policies.sql`**.
+   - Run.
+   - You should see "Success. No rows returned".
 
-1. **Go to Supabase Dashboard**
-   - Open: https://supabase.com/dashboard/project/ezyrlckumtfmsipwddld
-   - Click **"SQL Editor"** in the left sidebar
+4. **Email confirmation (recommended)**
+   - If **Confirm email** is enabled under **Authentication → Providers → Email**, run **`database/auth-users-insert-profile-trigger.sql`** once. It creates `public.users` when `auth.users` is created (the app cannot insert that row without a session while the user is unconfirmed).
+   - Set **Authentication → URL Configuration** → **Site URL** and **Redirect URLs** so confirmation and password-reset links can open the native apps:
+     - **Customer (standalone):** `sevacustomer://auth/callback` (or `sevacustomer://**`).
+     - **Worker (standalone):** `sevaworker://auth/callback` (or `sevaworker://**`).
+     - **Expo Go / dev:** add the URL Metro prints for `auth/callback`, e.g. `exp://YOUR_LAN:8081/--/auth/callback`, or log `Linking.createURL('auth/callback')` from the app once and paste that exact string.
 
-2. **Run the Schema**
-   - Click **"New query"**
-   - Open `packages/shared/database/schema.sql` in your editor
-   - Copy the entire contents
-   - Paste into the SQL Editor
-   - Click **"Run"** (or press Cmd/Ctrl + Enter)
-   - ✅ You should see "Success. No rows returned"
+5. **Standard email sign-up & sign-in (dashboard checklist)**
+   - **Authentication → Providers → Email**: **Enabled**. Set **Email OTP length** (e.g. 6) and **Email OTP expiration** as you prefer.
+   - **Critical — 6-digit code vs magic link:** `signInWithOtp` uses the **same** API for both. Supabase decides what the email contains from the **Magic Link** template, not from the client alone. If the template only uses `{{ .ConfirmationURL }}`, users get a **link**. To match the app’s “enter 6-digit code” signup flow, edit **Authentication → Email Templates → Magic link** and include **`{{ .Token }}`** in the body (see [Passwordless email — With OTP](https://supabase.com/docs/guides/auth/auth-magic-link#with-otp)). Example:
 
-3. **Run the RLS Policies**
-   - Click **"New query"** again
-   - Open `packages/shared/database/rls-policies.sql` in your editor
-   - Copy the entire contents
-   - Paste into the SQL Editor
-   - Click **"Run"**
-   - ✅ You should see "Success. No rows returned"
+     ```html
+     <h2>Your verification code</h2>
+     <p>Enter this code in the app:</p>
+     <p style="font-size: 24px; font-weight: bold;">{{ .Token }}</p>
+     ```
 
-## ✅ Step 3: Verify Setup
+     You can keep or remove the confirmation link; the app verifies with `verifyOtp({ email, token, type: 'email' })`.
+   - In app code, do **not** pass `options.data` on `signInWithOtp` for this flow (that can switch behavior toward link-style emails) — see [Supabase discussion](https://github.com/supabase/supabase/issues/9285). The Seva apps already omit it for email OTP signup.
+   - If you use **email code signup** only, you can turn **Confirm email** (link-based confirmation) **off** to avoid two different verification methods.
+   - Set **minimum password length** (e.g. 6–8+) to match the app.
+   - **Authentication → URL Configuration**: **Site URL** = your web app or a stable URL; **Redirect URLs** = allowed origins for magic links / email confirmation (and `exp://*` / Expo dev URLs while developing, if you use them).
+   - **Authentication → Email Templates**: also customize **Confirm signup** / **Reset password** if you like (optional).
+   - **Production**: configure **SMTP** (or use Supabase’s default with limits) so confirmation and password-reset emails are delivered reliably.
+   - **Optional hardening**: **CAPTCHA** (e.g. Turnstile) under **Authentication → Attack Protection** if you see abuse; **rate limits** where offered.
 
-1. **Check Tables**
-   - Go to **"Table Editor"** in Supabase dashboard
-   - You should see these tables:
-     - `users`
-     - `worker_profiles`
-     - `services`
-     - `service_subscriptions`
-     - `bookings`
-     - `reviews`
-     - `booking_photos`
+6. **Optional – app-specific SQL**
+   - **Avatars (both apps)**: run `packages/worker-app/database/storage-avatars.sql` to create the `avatars` storage bucket and policies.
+   - **Worker complete profile**: create storage bucket `worker-uploads` (Public) in Dashboard → Storage, then run `packages/worker-app/database/storage-worker-uploads.sql`. If your DB was created before worker profile fields were added, run `packages/worker-app/database/worker-profile-complete.sql`.
+   - **Customer app**: if you use chat, run the SQL in `packages/customer-app/database/` as needed (e.g. chat schema, RLS).
 
-2. **Test Connection**
-   ```bash
-   cd packages/customer-app
-   pnpm start
-   ```
-   - The app should start without connection errors
+## Step 3: Verify
 
-## 🎉 You're Done!
+- In **Table Editor** you should see: `users`, `worker_profiles`, `worker_portfolio_photos`, `services`, `service_subscriptions`, `bookings`, `reviews`, `booking_photos`.
+- Start an app (e.g. `pnpm customer` or `pnpm worker` from repo root) and confirm there are no Supabase connection errors.
 
-Your Supabase backend is now set up and ready to use. Both apps can now:
-- Authenticate users
-- Store and retrieve data
-- Use real-time subscriptions
-- Enforce security with RLS policies
+## Troubleshooting
 
-## 🔍 Quick Links
-
-- **Dashboard**: https://supabase.com/dashboard/project/ezyrlckumtfmsipwddld
-- **SQL Editor**: https://supabase.com/dashboard/project/ezyrlckumtfmsipwddld/sql
-- **Table Editor**: https://supabase.com/dashboard/project/ezyrlckumtfmsipwddld/editor
-
-## 🆘 Troubleshooting
-
-**If you get connection errors:**
-- Make sure `.env` files exist in both `customer-app` and `worker-app`
-- Restart Expo after creating `.env` files
-- Verify your API key is correct
-
-**If SQL fails:**
-- Make sure you're running schema.sql first, then rls-policies.sql
-- Check for any error messages in the SQL Editor
-- Some extensions might need to be enabled manually (PostGIS)
+- **Signup says “6-digit code” but email only has a link**: Update the **Magic link** email template to include `{{ .Token }}` (see step 5 above). Default templates are link-only.
+- **Connection errors**: Ensure `.env` exists in the app you’re running and restart Expo after changing env vars.
+- **SQL errors**: Run `schema.sql` before `rls-policies.sql`. Enable the PostGIS extension in the dashboard if required.
+- **Storage (avatars)**: Create the bucket and apply policies from `packages/worker-app/database/storage-avatars.sql` if profile photo upload is used.

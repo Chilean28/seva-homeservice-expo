@@ -3,15 +3,18 @@ import {
   View,
   Text,
   TextInput,
+  Pressable,
   TouchableOpacity,
   StyleSheet,
   Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
-import { Link, router } from 'expo-router';
-import { useAuth } from '@seva/shared';
+import { Link } from 'expo-router';
+import { useAuth } from '@/lib/contexts/AuthContext';
+import { loginErrorMessage } from '@/lib/supabase/auth';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -28,23 +31,29 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await signIn({ email, password });
-      router.replace('/(tabs)');
-    } catch (error: any) {
-      Alert.alert('Login Failed', error.message || 'Invalid email or password');
+      // Don't navigate here: we're inside (auth) stack which doesn't have (tabs).
+      // Root layout's useEffect will redirect to (tabs) when customerCheck === 'allowed'.
+    } catch (error: unknown) {
+      Alert.alert('Login Failed', loginErrorMessage(error));
     } finally {
       setLoading(false);
     }
   };
 
+  const Wrapper = Platform.OS === 'web' ? View : KeyboardAvoidingView;
+  const wrapperProps = Platform.OS === 'web' ? {} : { behavior: Platform.OS === 'ios' ? 'padding' as const : 'height' as const };
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.container}
-    >
-      <View style={styles.content}>
+    <Wrapper style={styles.container} {...wrapperProps} pointerEvents="box-none">
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
         <View style={styles.header}>
+          <Text style={styles.badge}>CUSTOMER</Text>
           <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to continue</Text>
+          <Text style={styles.subtitle}>Sign in to your account</Text>
         </View>
 
         <View style={styles.form}>
@@ -73,20 +82,20 @@ export default function LoginScreen() {
             />
           </View>
 
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
+          <Pressable
+            style={({ pressed }) => [styles.button, loading && styles.buttonDisabled, pressed && styles.buttonPressed]}
             onPress={handleLogin}
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color="#000" />
             ) : (
               <Text style={styles.buttonText}>Sign In</Text>
             )}
-          </TouchableOpacity>
+          </Pressable>
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>Don't have an account? </Text>
+            <Text style={styles.footerText}>{'Don\'t have an account? '}</Text>
             <Link href="/(auth)/signup" asChild>
               <TouchableOpacity>
                 <Text style={styles.linkText}>Sign Up</Text>
@@ -94,8 +103,8 @@ export default function LoginScreen() {
             </Link>
           </View>
         </View>
-      </View>
-    </KeyboardAvoidingView>
+      </ScrollView>
+    </Wrapper>
   );
 }
 
@@ -104,13 +113,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#fff',
   },
-  content: {
+  scroll: {
     flex: 1,
+  },
+  content: {
+    flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
+    minHeight: Platform.OS === 'web' ? '100%' : undefined,
   },
   header: {
     marginBottom: 48,
+  },
+  badge: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#F9A825',
+    marginBottom: 16,
+    letterSpacing: 1,
   },
   title: {
     fontSize: 32,
@@ -140,17 +160,21 @@ const styles = StyleSheet.create({
   },
   button: {
     height: 56,
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FFEB3B',
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 24,
+    ...(Platform.OS === 'web' && { cursor: 'pointer' as const }),
   },
   buttonDisabled: {
     opacity: 0.6,
   },
+  buttonPressed: {
+    opacity: 0.85,
+  },
   buttonText: {
-    color: '#fff',
+    color: '#000',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -164,7 +188,7 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   linkText: {
-    color: '#007AFF',
+    color: '#F9A825',
     fontSize: 14,
     fontWeight: '600',
   },
