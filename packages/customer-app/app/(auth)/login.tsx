@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
 } from 'react-native';
 import { Link } from 'expo-router';
 import { useAuth } from '@/lib/contexts/AuthContext';
@@ -23,14 +24,14 @@ export default function LoginScreen() {
   const { signIn } = useAuth();
 
   const handleLogin = async () => {
-    if (!email || !password) {
+    if (!email.trim() || !password) {
       Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
     setLoading(true);
     try {
-      await signIn({ email, password });
+      await signIn({ email: email.trim().toLowerCase(), password });
       // Don't navigate here: we're inside (auth) stack which doesn't have (tabs).
       // Root layout's useEffect will redirect to (tabs) when customerCheck === 'allowed'.
     } catch (error: unknown) {
@@ -51,8 +52,13 @@ export default function LoginScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.header}>
-          <Text style={styles.badge}>CUSTOMER</Text>
-          <Text style={styles.title}>Welcome Back</Text>
+          <Image
+            source={require('../../assets/images/logo-app-source.png')}
+            style={styles.logo}
+            resizeMode="contain"
+            accessibilityLabel="Seva"
+          />
+          <Text style={styles.title}>Welcome to SEVA</Text>
           <Text style={styles.subtitle}>Sign in to your account</Text>
         </View>
 
@@ -124,6 +130,12 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: 48,
+  },
+  logo: {
+    width: 400,
+    height: 144,
+    marginBottom: 28,
+    alignSelf: 'center',
   },
   badge: {
     fontSize: 12,

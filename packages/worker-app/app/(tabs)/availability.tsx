@@ -319,7 +319,7 @@ export default function AvailabilityScreen() {
                   false: windows.length === 0 && !loadingWindows ? '#FFEB3B' : '#e5e5e5',
                   true: '#FFEB3B',
                 }}
-                thumbColor="#000"
+                thumbColor="#fff"
               />
             </View>
           </View>
@@ -505,7 +505,12 @@ export default function AvailabilityScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={timePicker != null} animationType="slide" transparent>
+      <Modal
+        visible={timePicker != null}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setTimePicker(null)}
+      >
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setTimePicker(null)}>
           <View style={styles.modalSheet}>
             <Text style={styles.modalTitle}>

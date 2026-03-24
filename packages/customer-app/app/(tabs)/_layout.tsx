@@ -21,7 +21,7 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { unreadCount } = useUnreadChat();
   const { pendingBookingCount } = useBookingAlerts();
-  const androidBottom = Platform.OS === 'android' ? insets.bottom : 0;
+  const bottomInset = insets.bottom;
   return (
     <ErrorBoundary>
     <Tabs
@@ -32,8 +32,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: '#FFEB3B',
           borderTopColor: '#FFEB3B',
-          height: Platform.OS === 'ios' ? 90 : 70 + androidBottom,
-          paddingBottom: Platform.OS === 'ios' ? 25 : 10 + androidBottom,
+          height: Platform.OS === 'ios' ? 64 + bottomInset : 70 + bottomInset,
+          paddingBottom: 10 + bottomInset,
           ...Platform.select({
             ios: {
               position: 'absolute',

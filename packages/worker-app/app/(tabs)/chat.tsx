@@ -9,6 +9,7 @@ import { router } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 import {
+  ActivityIndicator,
   FlatList,
   Image,
   Alert,
@@ -35,6 +36,24 @@ type ConversationRow = {
 
 type LastMessage = { conversation_id: string; body: string; created_at: string; attachment_url?: string | null; sender_id?: string };
 
+function formatChatListTimestamp(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    if (isToday) {
+      return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    }
+    const y = new Date(now);
+    y.setDate(y.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  } catch {
+    return '';
+  }
+}
+
 export default function ChatScreen() {
   const { user } = useAuth();
   const { setUnreadCount } = useUnreadChat();
@@ -44,6 +63,7 @@ export default function ChatScreen() {
   const [unreadConvIds, setUnreadConvIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const conversationIdsRef = useRef<string[]>([]);
 
 
@@ -54,8 +74,10 @@ export default function ChatScreen() {
       setLoading(false);
       setRefreshing(false);
       setUnreadCount(0);
+      setLoadError(null);
       return;
     }
+    setLoadError(null);
     const { data: convs, error } = await supabase
       .from('conversations')
       .select(
@@ -75,6 +97,7 @@ export default function ChatScreen() {
 
     if (error) {
       setConversations([]);
+      setLoadError(error.message || 'Could not load conversations.');
       setLoading(false);
       setRefreshing(false);
       return;
@@ -247,6 +270,7 @@ export default function ChatScreen() {
     }
     return m.body.length > 40 ? m.body.slice(0, 40) + '...' : m.body;
   };
+  const lastActivityIso = (row: ConversationRow) => lastMessages[row.id]?.created_at ?? row.updated_at;
 
   if (profileLoading) {
     return (
@@ -267,7 +291,7 @@ export default function ChatScreen() {
             <View style={styles.header}>
               <View style={styles.headerSide} />
               <View style={styles.headerCenter}>
-                <Text style={styles.headerTitle}>Message</Text>
+                <Text style={styles.headerTitle}>Chat</Text>
               </View>
               <View style={styles.headerSide} />
             </View>
@@ -288,7 +312,7 @@ export default function ChatScreen() {
           <View style={styles.header}>
             <View style={styles.headerSide} />
             <View style={styles.headerCenter}>
-              <Text style={styles.headerTitle}>Message</Text>
+              <Text style={styles.headerTitle}>Chat</Text>
             </View>
             <View style={styles.headerSide} />
           </View>
@@ -299,7 +323,15 @@ export default function ChatScreen() {
         <View style={styles.content}>
         {loading ? (
           <View style={styles.centered}>
-            <Text style={styles.placeholderText}>Loading...</Text>
+            <ActivityIndicator size="small" color="#000" />
+            <Text style={styles.placeholderText}>Loading chats...</Text>
+          </View>
+        ) : loadError ? (
+          <View style={styles.centered}>
+            <Text style={styles.errorText}>Could not load conversations: {loadError}</Text>
+            <TouchableOpacity style={styles.retryBtn} onPress={onRefresh} activeOpacity={0.8}>
+              <Text style={styles.retryBtnText}>Retry</Text>
+            </TouchableOpacity>
           </View>
         ) : conversations.length === 0 ? (
           <ScrollView
@@ -353,17 +385,22 @@ export default function ChatScreen() {
                       {hasUnread ? <View style={styles.unreadDot} /> : null}
                     </View>
                     <View style={styles.rowContent}>
-                      <View style={styles.rowTop}>
+                      <View style={styles.rowLeft}>
                         <Text style={[styles.senderName, hasUnread && styles.senderNameUnread]} numberOfLines={1}>
                           {otherName(item)}
                         </Text>
+                        <Text style={[styles.lastMessage, hasUnread && styles.lastMessageUnread]} numberOfLines={1}>
+                          {lastMsg(item)}
+                        </Text>
+                      </View>
+                      <View style={styles.rowRight}>
                         <Text style={styles.serviceTag} numberOfLines={1}>
                           {serviceLabel(item)}
                         </Text>
+                        <Text style={styles.serviceTime} numberOfLines={1}>
+                          {formatChatListTimestamp(lastActivityIso(item))}
+                        </Text>
                       </View>
-                      <Text style={[styles.lastMessage, hasUnread && styles.lastMessageUnread]} numberOfLines={1}>
-                        {lastMsg(item)}
-                      </Text>
                     </View>
                   </TouchableOpacity>
                 </Swipeable>
@@ -402,6 +439,17 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   emptyTitle: { fontSize: 18, fontWeight: '600', color: '#333', marginTop: 16 },
   placeholderText: { fontSize: 14, color: '#999', marginTop: 8, textAlign: 'center' },
+  errorText: { fontSize: 14, color: '#C62828', textAlign: 'center', lineHeight: 20 },
+  retryBtn: {
+    marginTop: 12,
+    backgroundColor: '#FFEB3B',
+    borderWidth: 1,
+    borderColor: '#F9A825',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+  },
+  retryBtnText: { fontSize: 14, fontWeight: '700', color: '#000' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -440,24 +488,41 @@ const styles = StyleSheet.create({
   },
   avatarFallback: { alignItems: 'center', justifyContent: 'center' },
   avatarInitials: { fontSize: 22, fontWeight: '600', color: '#666' },
-  rowContent: { flex: 1, minWidth: 0 },
-  rowTop: {
+  rowContent: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 60,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     justifyContent: 'space-between',
-    marginBottom: 4,
+  },
+  rowLeft: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+    marginRight: 8,
   },
   senderName: {
     fontSize: 16,
     fontWeight: '700',
     color: '#000',
-    flex: 1,
-    marginRight: 8,
+    marginBottom: 4,
   },
   senderNameUnread: {
     fontWeight: '800',
   },
-  serviceTag: { fontSize: 13, color: '#999' },
+  rowRight: {
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    maxWidth: '46%',
+    paddingBottom: 1,
+  },
+  serviceTag: { fontSize: 13, color: '#999', textAlign: 'right' },
+  serviceTime: {
+    fontSize: 11,
+    color: '#AAA',
+    textAlign: 'right',
+  },
   lastMessage: { fontSize: 14, color: '#666' },
   lastMessageUnread: {
     fontWeight: '600',

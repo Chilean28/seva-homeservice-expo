@@ -108,6 +108,7 @@ export function JobDetailPanel({
   const [lockNoteInput, setLockNoteInput] = useState('');
   const [lockBusy, setLockBusy] = useState(false);
   const [actionId, setActionId] = useState<string | null>(null);
+  const [refundBusy, setRefundBusy] = useState(false);
 
   useEffect(() => {
     const h = job.locked_duration_hours ?? job.estimated_duration_hours ?? 2;
@@ -190,6 +191,24 @@ export function JobDetailPanel({
     }
   }, [workerId, job.id, dismissOnWorkflowActions, onClose, onMutateSuccess, onAcceptedJob]);
 
+  const rejectJob = useCallback(async () => {
+    if (!workerId) return;
+    if (dismissOnWorkflowActions) onClose();
+    setActionId(job.id);
+    const { error } = await supabase
+      .from('bookings')
+      .update({ status: BookingStatus.CANCELLED } as never)
+      .eq('id', job.id)
+      .eq('worker_id', workerId)
+      .eq('status', BookingStatus.PENDING);
+    setActionId(null);
+    if (error) {
+      Alert.alert('Could not reject', error.message);
+      return;
+    }
+    void onMutateSuccess();
+  }, [workerId, job.id, dismissOnWorkflowActions, onClose, onMutateSuccess]);
+
   const startJob = useCallback(async () => {
     if (!workerId) return;
     if (needsCustomerPriceConfirm(job)) {
@@ -199,41 +218,61 @@ export function JobDetailPanel({
       );
       return;
     }
-    if (dismissOnWorkflowActions) onClose();
-    setActionId(job.id);
-    const { error } = await supabase
-      .from('bookings')
-      .update({ status: BookingStatus.ONGOING } as never)
-      .eq('id', job.id)
-      .eq('worker_id', workerId);
-    setActionId(null);
-    if (error) Alert.alert('Error', error.message);
-    else void onMutateSuccess();
+    Alert.alert('Start job?', 'Are you sure you want to mark this job as started?', [
+      { text: 'Not yet', style: 'cancel' },
+      {
+        text: 'Start',
+        onPress: async () => {
+          if (dismissOnWorkflowActions) onClose();
+          setActionId(job.id);
+          const { error } = await supabase
+            .from('bookings')
+            .update({ status: BookingStatus.ONGOING } as never)
+            .eq('id', job.id)
+            .eq('worker_id', workerId);
+          setActionId(null);
+          if (error) Alert.alert('Error', error.message);
+          else void onMutateSuccess();
+        },
+      },
+    ]);
   }, [workerId, job, dismissOnWorkflowActions, onClose, onMutateSuccess]);
 
   const completeJob = useCallback(async () => {
     if (!workerId || !profile?.id) return;
-    if (dismissOnWorkflowActions) onClose();
-    setActionId(job.id);
-    const { error } = await supabase
-      .from('bookings')
-      .update({ status: BookingStatus.COMPLETED } as never)
-      .eq('id', job.id)
-      .eq('worker_id', workerId);
-    if (error) {
-      setActionId(null);
-      Alert.alert('Error', error.message);
-      return;
-    }
-    const nextTotal = (profile.total_jobs_completed ?? 0) + 1;
-    await supabase
-      .from('worker_profiles')
-      .update({ total_jobs_completed: nextTotal } as never)
-      .eq('id', profile.id);
-    setActionId(null);
-    void onMutateSuccess();
-    void refetchProfile();
-    if (!dismissOnWorkflowActions) onClose();
+    Alert.alert(
+      'Mark complete?',
+      'This will mark the job as completed and trigger payment processing.',
+      [
+        { text: 'Not yet', style: 'cancel' },
+        {
+          text: 'Complete',
+          onPress: async () => {
+            if (dismissOnWorkflowActions) onClose();
+            setActionId(job.id);
+            const { error } = await supabase
+              .from('bookings')
+              .update({ status: BookingStatus.COMPLETED } as never)
+              .eq('id', job.id)
+              .eq('worker_id', workerId);
+            if (error) {
+              setActionId(null);
+              Alert.alert('Error', error.message);
+              return;
+            }
+            const nextTotal = (profile.total_jobs_completed ?? 0) + 1;
+            await supabase
+              .from('worker_profiles')
+              .update({ total_jobs_completed: nextTotal } as never)
+              .eq('id', profile.id);
+            setActionId(null);
+            void onMutateSuccess();
+            void refetchProfile();
+            if (!dismissOnWorkflowActions) onClose();
+          },
+        },
+      ]
+    );
   }, [
     workerId,
     profile?.id,
@@ -293,17 +332,62 @@ export function JobDetailPanel({
     }
   }, [workerId, user?.id, job.id, job.customer_id, onClose]);
 
+  const latestRefundRequest = Array.isArray(job.booking_refund_requests)
+    ? job.booking_refund_requests[0] ?? null
+    : null;
   const statusNorm = normalizeBookingStatus(job.status);
+  const canConfirmRefund =
+    statusNorm === 'completed' &&
+    job.payment_method === 'card' &&
+    job.payment_status === 'paid' &&
+    latestRefundRequest?.status === 'requested';
+
+  const confirmRefund = useCallback(() => {
+    if (!canConfirmRefund) return;
+    Alert.alert(
+      'Confirm full refund',
+      'This will issue a full Stripe refund to the customer for this booking.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm refund',
+          style: 'destructive',
+          onPress: async () => {
+            setRefundBusy(true);
+            const result = await invokeEdgeFunction<{ refund_id?: string }>('process-booking-refund', {
+              booking_id: job.id,
+            });
+            setRefundBusy(false);
+            if (result.error) {
+              Alert.alert('Refund failed', result.error);
+              return;
+            }
+            Alert.alert('Refund sent', 'The full refund was submitted successfully.');
+            void onMutateSuccess();
+          },
+        },
+      ]
+    );
+  }, [canConfirmRefund, job.id, onMutateSuccess]);
+
   const detailMessageControl = messageControlForStatus(statusNorm);
 
   return (
     <ScrollView
       style={styles.scroll}
-      contentContainerStyle={styles.scrollContent}
+      contentContainerStyle={[styles.scrollContent, showPanelTitle ? styles.scrollContentWithHeader : null]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
-      {showPanelTitle ? <Text style={styles.modalTitle}>Job details</Text> : null}
+      {showPanelTitle ? (
+        <View style={styles.panelHeader}>
+          <TouchableOpacity onPress={onClose} style={styles.panelHeaderBtn} activeOpacity={0.8}>
+            <Ionicons name="arrow-back" size={22} color="#000" />
+          </TouchableOpacity>
+          <Text style={styles.modalTitle}>Job details</Text>
+          <View style={styles.panelHeaderSide} />
+        </View>
+      ) : null}
       <View style={styles.modalTopBar}>
         <View
           style={[
@@ -477,6 +561,34 @@ export function JobDetailPanel({
         </View>
       ) : null}
 
+      {latestRefundRequest ? (
+        <View style={styles.refundCard}>
+          <Text style={styles.refundTitle}>Refund request</Text>
+          <Text style={styles.refundStatus}>
+            Status: {latestRefundRequest.status.replace('_', ' ')}
+          </Text>
+          {latestRefundRequest.reason ? (
+            <Text style={styles.refundReason}>Reason: {latestRefundRequest.reason}</Text>
+          ) : null}
+          {latestRefundRequest.error_message ? (
+            <Text style={styles.refundError}>{latestRefundRequest.error_message}</Text>
+          ) : null}
+          {canConfirmRefund ? (
+            <TouchableOpacity
+              style={[styles.button, styles.buttonRefund, refundBusy && styles.buttonDisabled]}
+              onPress={confirmRefund}
+              disabled={refundBusy}
+            >
+              {refundBusy ? (
+                <ActivityIndicator size="small" color="#000" />
+              ) : (
+                <Text style={styles.buttonTextAccept}>Confirm full refund</Text>
+              )}
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      ) : null}
+
       {statusNorm === 'pending' &&
         job.response_deadline_at &&
         (() => {
@@ -494,12 +606,9 @@ export function JobDetailPanel({
         <View style={[styles.modalActions, styles.modalBlockBeforeClose]}>
           <TouchableOpacity
             style={[styles.button, styles.buttonDecline]}
-            onPress={() => {
-              onClose();
-              void onMutateSuccess();
-            }}
+            onPress={() => void rejectJob()}
           >
-            <Text style={styles.buttonTextDecline}>Not now</Text>
+            <Text style={styles.buttonTextDecline}>Reject</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.button, styles.buttonAccept, (!workerId || isJobExpired(job)) && styles.buttonDisabled]}
@@ -592,11 +701,32 @@ function messageControlForStatus(statusNorm: string) {
 const styles = StyleSheet.create({
   scroll: { flexGrow: 0 },
   scrollContent: { paddingBottom: 24 },
+  scrollContentWithHeader: { paddingTop: 8 },
+  panelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: -20,
+    marginHorizontal: -20,
+    marginBottom: 16,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#FFEB3B',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8E8E8',
+  },
+  panelHeaderBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+  },
+  panelHeaderSide: { width: 32, height: 32 },
   modalTitle: {
     fontSize: 20,
     fontWeight: '700',
     color: '#000',
-    marginBottom: 10,
+    marginBottom: 0,
   },
   modalTopBar: {
     flexDirection: 'row',
@@ -823,6 +953,42 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  refundCard: {
+    marginTop: 8,
+    marginBottom: 12,
+    padding: 14,
+    backgroundColor: '#FFF8E1',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FFE082',
+  },
+  refundTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 6,
+  },
+  refundStatus: {
+    fontSize: 13,
+    color: '#444',
+    marginBottom: 4,
+    textTransform: 'capitalize',
+  },
+  refundReason: {
+    fontSize: 13,
+    color: '#444',
+    lineHeight: 18,
+  },
+  refundError: {
+    fontSize: 12,
+    color: '#B71C1C',
+    marginTop: 6,
+    lineHeight: 17,
+  },
+  buttonRefund: {
+    backgroundColor: '#FFE082',
+    marginTop: 10,
   },
   modalChatClosedHint: {
     fontSize: 13,

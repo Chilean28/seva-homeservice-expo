@@ -6,13 +6,14 @@ import { Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'react-native';
 
-const menuItems: { id: string; label: string; icon: 'person-outline' | 'location-outline' | 'lock-closed-outline' | 'card-outline' | 'notifications-outline' | 'headset-outline'; route: string; params?: Record<string, string> }[] = [
+const menuItems: { id: string; label: string; icon: 'person-outline' | 'location-outline' | 'lock-closed-outline' | 'card-outline' | 'notifications-outline' | 'headset-outline' | 'document-text-outline'; route: string; params?: Record<string, string> }[] = [
   { id: 'personal', label: 'Personal Info', icon: 'person-outline', route: '/(tabs)/profile/personal-info' },
   { id: 'addresses', label: 'Addresses', icon: 'location-outline', route: '/(tabs)/profile/addresses' },
   { id: 'account', label: 'Account & Security', icon: 'lock-closed-outline', route: '/(tabs)/profile/account' },
   { id: 'payment', label: 'Payment', icon: 'card-outline', route: '/payment-methods', params: { from: 'profile' } },
   { id: 'notifications', label: 'Notifications', icon: 'notifications-outline', route: '/(tabs)/profile/notifications' },
   { id: 'help', label: 'Help & Support', icon: 'headset-outline', route: '/(tabs)/profile/help' },
+  { id: 'refund-policy', label: 'Refund Policy', icon: 'document-text-outline', route: '/legal/refund-policy' },
 ];
 
 export default function ProfileScreen() {

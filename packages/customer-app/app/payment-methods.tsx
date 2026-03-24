@@ -62,7 +62,7 @@ export default function PaymentMethodsScreen() {
   const allMethods = [...savedOptions, ...STATIC_METHODS];
   const selectedLabel = allMethods.find((m) => m.id === selectedId)?.label ?? allMethods[0]?.label ?? 'Card';
 
-  const loadMethods = useCallback(async () => {
+  const loadMethods = useCallback(async (preferredId?: string) => {
     if (!user?.id) {
       setSavedList([]);
       setSavedOptions([]);
@@ -79,7 +79,17 @@ export default function PaymentMethodsScreen() {
     }));
     setSavedOptions(options);
     const defaultCard = list.find((m) => m.isDefault) ?? null;
-    setSelectedId(defaultCard?.id ?? 'cash');
+    const preferredMatch =
+      preferredId &&
+      list.find((m) => m.id === preferredId || m.stripePaymentMethodId === preferredId);
+    if (preferredMatch) {
+      setSelectedId(preferredMatch.id);
+    } else {
+      setSelectedId((prev) => {
+        if (prev && (prev === 'cash' || list.some((m) => m.id === prev))) return prev;
+        return defaultCard?.id ?? 'cash';
+      });
+    }
     setLoading(false);
   }, [user?.id]);
 
@@ -152,7 +162,12 @@ export default function PaymentMethodsScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#FFEB3B" />
       <SafeAreaView style={styles.headerSafe} edges={['top']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
             <Ionicons name="arrow-back" size={24} color="#000" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{isFromProfile ? 'Payment' : 'Payment Methods'}</Text>
@@ -195,7 +210,12 @@ export default function PaymentMethodsScreen() {
                         <Text style={styles.setDefaultText}>Set default</Text>
                       </TouchableOpacity>
                     )}
-                    <TouchableOpacity onPress={() => handleRemove(m)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                    <TouchableOpacity
+                      onPress={() => handleRemove(m)}
+                      hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove ${getPaymentMethodDisplayLabel(m)}`}
+                    >
                       <Ionicons name="trash-outline" size={22} color="#FF3B30" />
                     </TouchableOpacity>
                   </View>
@@ -256,14 +276,14 @@ export default function PaymentMethodsScreen() {
         visible={addCardModalVisible}
         onClose={() => {
           setAddCardModalVisible(false);
-          loadMethods();
-          setTimeout(loadMethods, 200);
-          setTimeout(loadMethods, 500);
+          void loadMethods();
+          setTimeout(() => void loadMethods(), 200);
+          setTimeout(() => void loadMethods(), 500);
         }}
-        onSuccess={() => {
-          loadMethods();
-          setTimeout(loadMethods, 150);
-          setTimeout(loadMethods, 450);
+        onSuccess={(paymentMethodId) => {
+          void loadMethods(paymentMethodId);
+          setTimeout(() => void loadMethods(paymentMethodId), 150);
+          setTimeout(() => void loadMethods(paymentMethodId), 450);
         }}
         userId={user?.id ?? undefined}
       />
@@ -281,7 +301,7 @@ const styles = StyleSheet.create({
     backgroundColor: APP_SCREEN_HEADER_BG,
     ...appScreenHeaderBarPadding,
   },
-  backBtn: { padding: 4 },
+  backBtn: { minWidth: 44, minHeight: 44, padding: 4, justifyContent: 'center', alignItems: 'center' },
   headerTitle: { ...appScreenHeaderTitleStyle },
   headerBack: { width: 40 },
   scroll: { flex: 1 },

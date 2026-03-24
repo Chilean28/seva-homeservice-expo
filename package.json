@@ -22,7 +22,9 @@
     "customer:android": "cd packages/customer-app && npx expo run:android",
     "ios": "cd packages/customer-app && npx expo run:ios",
     "android": "cd packages/customer-app && npx expo run:android",
-    "supabase:types": "supabase gen types typescript --project-id ${SUPABASE_PROJECT_ID} > database/generated-types.ts"
+    "supabase:types": "supabase gen types typescript --project-id ${SUPABASE_PROJECT_ID} > database/generated-types.ts",
+    "assets:logo-white-bg": "npx --yes --package=sharp node scripts/make-splash-icon-white-bg.cjs",
+    "assets:sync-native": "bash scripts/sync-native-splash-icons.sh"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

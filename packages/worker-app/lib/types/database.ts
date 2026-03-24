@@ -94,7 +94,25 @@ export interface Booking {
   cash_platform_fee_cents?: number | null;
   cash_platform_fee_status?: 'pending' | 'charged' | 'failed' | null;
   cash_platform_fee_stripe_payment_intent_id?: string | null;
+  completed_at?: string | null;
   created_at: string;
+}
+
+export interface BookingRefundRequest {
+  id: string;
+  booking_id: string;
+  customer_id: string;
+  worker_id: string;
+  reason?: string | null;
+  status: 'requested' | 'worker_confirmed' | 'processing' | 'succeeded' | 'failed' | 'rejected' | 'expired';
+  requested_at: string;
+  worker_confirmed_at?: string | null;
+  processed_at?: string | null;
+  stripe_refund_id?: string | null;
+  stripe_refund_status?: string | null;
+  error_message?: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Review {
@@ -238,6 +256,24 @@ export interface Database {
           comment?: string;
         };
         Update: Partial<Omit<Review, 'id' | 'created_at'>>;
+      };
+      booking_refund_requests: {
+        Row: BookingRefundRequest;
+        Insert: {
+          id?: string;
+          booking_id: string;
+          customer_id: string;
+          worker_id: string;
+          reason?: string | null;
+          status?: BookingRefundRequest['status'];
+          requested_at?: string;
+          worker_confirmed_at?: string | null;
+          processed_at?: string | null;
+          stripe_refund_id?: string | null;
+          stripe_refund_status?: string | null;
+          error_message?: string | null;
+        };
+        Update: Partial<Omit<BookingRefundRequest, 'id' | 'created_at' | 'booking_id' | 'customer_id'>>;
       };
       booking_photos: {
         Row: BookingPhoto;

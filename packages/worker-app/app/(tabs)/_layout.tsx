@@ -21,7 +21,7 @@ export default function TabLayout() {
   const { unreadCount } = useUnreadChat();
   const { pendingJobsCount } = usePendingJobs();
   const insets = useSafeAreaInsets();
-  const androidBottom = Platform.OS === 'android' ? insets.bottom : 0;
+  const bottomInset = insets.bottom;
   const segments = useSegments();
   const segs = segments as string[];
   const isOnSetRates = segs.includes('profile') && segs.includes('set-rates');
@@ -36,8 +36,8 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: '#FFEB3B',
           borderTopColor: '#FFEB3B',
-          height: Platform.OS === 'ios' ? 90 : Platform.OS === 'web' ? 64 : 70 + androidBottom,
-          paddingBottom: Platform.OS === 'ios' ? 25 : Platform.OS === 'web' ? 8 : 10 + androidBottom,
+          height: Platform.OS === 'ios' ? 64 + bottomInset : Platform.OS === 'web' ? 64 : 70 + bottomInset,
+          paddingBottom: Platform.OS === 'web' ? 8 : 10 + bottomInset,
           paddingTop: 10,
           ...Platform.select({
             ios: { position: 'absolute' },

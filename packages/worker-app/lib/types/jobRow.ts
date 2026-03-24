@@ -20,7 +20,17 @@ export type JobRow = {
   price_lock_note: string | null;
   notes: string | null;
   created_at: string;
+  completed_at: string | null;
   response_deadline_at: string | null;
+  payment_method?: 'card' | 'cash' | null;
+  payment_status?: 'unpaid' | 'pending' | 'paid' | 'refunded' | null;
+  booking_refund_requests?: {
+    id: string;
+    status: 'requested' | 'worker_confirmed' | 'processing' | 'succeeded' | 'failed' | 'rejected' | 'expired';
+    reason: string | null;
+    requested_at: string;
+    error_message: string | null;
+  }[] | null;
   services: { name: string } | null;
   users: { full_name: string } | null;
 };

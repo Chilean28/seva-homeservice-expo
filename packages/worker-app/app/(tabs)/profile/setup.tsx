@@ -369,6 +369,13 @@ export default function ProfileSetupScreen() {
         }
       }
 
+      // Canonical `users.phone` for chat/call; DB trigger also syncs from worker_profiles when deployed.
+      const { error: syncUserPhone } = await supabase
+        .from('users')
+        .update({ phone: trimmedPhone } as never)
+        .eq('id', user.id);
+      if (syncUserPhone) throw new Error(syncUserPhone.message);
+
       const allPortfolioUrls = [...portfolioUrls];
       for (let i = 0; i < portfolioLocalUris.length; i++) {
         const url = await uploadWorkerImage(workerId, portfolioLocalUris[i], `portfolio/${Date.now()}_${i}.jpg`);

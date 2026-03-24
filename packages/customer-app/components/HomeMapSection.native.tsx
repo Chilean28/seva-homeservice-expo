@@ -4,8 +4,8 @@ import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 
 const DEFAULT_MAP_REGION = {
-  latitude: 11.5564,
-  longitude: 104.9282,
+  latitude: 11.5692,
+  longitude: 104.9173,
   latitudeDelta: 0.0922,
   longitudeDelta: 0.0421,
 };
@@ -62,7 +62,7 @@ export default function HomeMapSection({
             onLocationChange({
               lat: latitude,
               lng: longitude,
-              address: `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`,
+              address: currentLocation?.address ?? 'Selected location',
             });
             router.push({
               pathname: '/search-location',

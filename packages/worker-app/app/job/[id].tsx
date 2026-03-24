@@ -16,10 +16,18 @@ const select = `
   id, customer_id, worker_id, service_id, status, scheduled_date, address, price, total_amount,
   estimated_duration_hours, estimated_total, locked_duration_hours, locked_hourly_rate, price_locked_at,
   price_confirmed_by_customer_at, price_lock_note,
-  notes, created_at, response_deadline_at,
+  notes, created_at, completed_at, response_deadline_at, payment_method, payment_status,
+  booking_refund_requests (id, status, reason, requested_at, error_message),
   services (name),
   users (full_name)
 `;
+
+function formatJobDetailErrorForDisplay(message: string): string {
+  if (/typeerror|network request failed|fetch failed|aborted|timeout/i.test(message)) {
+    return 'Could not reach the server. Check your connection and tap Retry.';
+  }
+  return message;
+}
 
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -50,10 +58,19 @@ export default function JobDetailScreen() {
       setLoading(false);
       return;
     }
+    let effectiveWorkerId = workerId;
+    if (!effectiveWorkerId && user?.id) {
+      const { data: profileRow } = await supabase
+        .from('worker_profiles')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      effectiveWorkerId = (profileRow as { id?: string } | null)?.id ?? null;
+    }
     const st = normalizeBookingStatus(row.status);
     const allowed =
-      (workerId && row.worker_id === workerId) ||
-      (st === 'pending' && (row.worker_id === null || row.worker_id === workerId));
+      (effectiveWorkerId && row.worker_id === effectiveWorkerId) ||
+      (st === 'pending' && (row.worker_id === null || row.worker_id === effectiveWorkerId));
     if (!allowed) {
       setError('You do not have access to this job.');
       setJob(null);
@@ -62,7 +79,7 @@ export default function JobDetailScreen() {
     }
     setJob(row);
     setLoading(false);
-  }, [id, workerId]);
+  }, [id, workerId, user?.id]);
 
   useEffect(() => {
     if (profileLoading) return;
@@ -128,7 +145,10 @@ export default function JobDetailScreen() {
           </View>
         </SafeAreaView>
         <View style={styles.centered}>
-          <Text style={styles.errorText}>{error ?? 'Job not found'}</Text>
+          <Text style={styles.errorText}>{formatJobDetailErrorForDisplay(error ?? 'Job not found')}</Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={() => { setLoading(true); void fetchJob(); }} activeOpacity={0.8}>
+            <Text style={styles.retryBtnText}>Retry</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -180,4 +200,14 @@ const styles = StyleSheet.create({
   body: { flex: 1, paddingHorizontal: 20, paddingTop: 8 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   errorText: { fontSize: 15, color: '#FF3B30', textAlign: 'center' },
+  retryBtn: {
+    marginTop: 16,
+    backgroundColor: '#FFEB3B',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderWidth: 1,
+    borderColor: '#F9A825',
+  },
+  retryBtnText: { fontSize: 16, fontWeight: '700', color: '#000' },
 });

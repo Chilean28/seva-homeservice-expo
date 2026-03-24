@@ -20,7 +20,7 @@ const THEME_ORANGE = '#F9A825';
 export interface AddCardStripeModalProps {
   visible: boolean;
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (paymentMethodId: string) => void;
   setAsDefault?: boolean;
   /** Pass the same userId the parent uses for getPaymentMethods so the new card is saved to the same list. */
   userId?: string | null;
@@ -152,7 +152,7 @@ export function AddCardStripeModal({
           { setAsDefault }
         );
         await new Promise((r) => setTimeout(r, 100));
-        onSuccess?.();
+        onSuccess?.(paymentMethodId);
         onClose();
       } catch {
         setSaving(false);
@@ -188,11 +188,17 @@ export function AddCardStripeModal({
   if (!visible) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" statusBarTranslucent>
+    <Modal visible={visible} animationType="slide" statusBarTranslucent onRequestClose={handleClose}>
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
           <Text style={styles.title}>Add card</Text>
-          <TouchableOpacity onPress={handleClose} hitSlop={12} style={styles.closeBtn}>
+          <TouchableOpacity
+            onPress={handleClose}
+            hitSlop={12}
+            style={styles.closeBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Close add card"
+          >
             <Ionicons name="close" size={28} color="#000" />
           </TouchableOpacity>
         </View>
@@ -239,7 +245,13 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E0E0E0',
   },
   title: { fontSize: 18, fontWeight: '700', color: '#000' },
-  closeBtn: { padding: 4 },
+  closeBtn: {
+    minWidth: 44,
+    minHeight: 44,
+    padding: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 12 },
   loadingText: { fontSize: 16, color: '#666' },
   webView: { flex: 1 },

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useImperativeHandle, useRef, useState } from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export type SearchLocationMapRef = {
   animateToLocation: (lat: number, lng: number) => void;
@@ -20,6 +21,7 @@ const SearchLocationMap = React.forwardRef<SearchLocationMapRef, Props>(function
   ref
 ) {
   const mapRef = useRef<MapView>(null);
+  const insets = useSafeAreaInsets();
   const [marker, setMarker] = useState({ latitude: initialLat, longitude: initialLng });
 
   useImperativeHandle(
@@ -78,10 +80,11 @@ const SearchLocationMap = React.forwardRef<SearchLocationMapRef, Props>(function
         />
       </MapView>
       <TouchableOpacity
-        style={styles.myLocationButton}
+        style={[styles.myLocationButton, { bottom: Math.max(16, insets.bottom + 8) }]}
         onPress={onPressMyLocation}
         activeOpacity={0.8}
         accessibilityLabel="Center map on my location"
+        accessibilityRole="button"
       >
         <Ionicons name="locate" size={24} color="#FFEB3B" />
       </TouchableOpacity>

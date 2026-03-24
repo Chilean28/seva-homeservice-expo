@@ -9,7 +9,8 @@ module.exports = {
     slug: 'seva-worker',
     version: '1.0.0',
     orientation: 'portrait',
-    icon: asset('icon.png'),
+    // App icon + splash center image (1024×1024 PNG; keep in sync with customer app branding)
+    icon: asset('splash-icon-white-bg.png'),
     scheme: 'sevaworker',
     extra: {
       eas: {
@@ -38,7 +39,7 @@ module.exports = {
       package: 'com.seva.worker',
       adaptiveIcon: {
         backgroundColor: '#ffffff',
-        foregroundImage: asset('icon.png'),
+        foregroundImage: asset('splash-icon-white-bg.png'),
       },
       edgeToEdgeEnabled: true,
       predictiveBackGestureEnabled: false,
@@ -48,6 +49,7 @@ module.exports = {
       favicon: asset('favicon.png'),
     },
     plugins: [
+      'expo-dev-client',
       'expo-notifications',
       'expo-router',
       [
@@ -59,12 +61,12 @@ module.exports = {
       [
         'expo-splash-screen',
         {
-          image: asset('icon.png'),
+          image: asset('splash-icon-white-bg.png'),
           imageWidth: 200,
           resizeMode: 'contain',
           backgroundColor: '#ffffff',
           dark: {
-            backgroundColor: '#000000',
+            backgroundColor: '#ffffff',
           },
         },
       ],

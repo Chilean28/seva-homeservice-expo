@@ -4,8 +4,7 @@ import { router } from 'expo-router';
 import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-/** Change to your real support inbox for production. */
-const SUPPORT_EMAIL = 'support@example.com';
+const SUPPORT_EMAIL = process.env.EXPO_PUBLIC_SUPPORT_EMAIL ?? 'support@seva.app';
 
 const FAQ_ITEMS = [
   {
@@ -59,6 +58,10 @@ export default function HelpScreen() {
           <Ionicons name="mail-outline" size={22} color="#000" />
           <Text style={styles.supportBtnText}>{SUPPORT_EMAIL}</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.policyBtn} onPress={() => router.push('/legal/refund-policy')} accessibilityRole="button">
+          <Ionicons name="document-text-outline" size={20} color="#000" />
+          <Text style={styles.policyBtnText}>Refund policy</Text>
+        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -98,4 +101,18 @@ const styles = StyleSheet.create({
     borderColor: '#E8E8E8',
   },
   supportBtnText: { fontSize: 15, fontWeight: '600', color: '#000' },
+  policyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    alignSelf: 'flex-start',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E8E8E8',
+    backgroundColor: '#fff',
+  },
+  policyBtnText: { fontSize: 14, fontWeight: '600', color: '#000' },
 });

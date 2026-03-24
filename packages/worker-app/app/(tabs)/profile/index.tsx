@@ -29,6 +29,7 @@ const menuItems = [
   { id: 'account', label: 'Account & Security', icon: 'lock-closed-outline' as const, route: '/(tabs)/profile/account' },
   { id: 'payouts', label: 'Payouts', icon: 'wallet-outline' as const, route: '/payouts' },
   { id: 'stripe', label: 'Connect Stripe', icon: 'card-outline' as const, route: '/(tabs)/profile/stripe-connect' },
+  { id: 'refund-policy', label: 'Refund Policy', icon: 'document-text-outline' as const, route: '/legal/refund-policy' },
 ];
 
 export default function ProfileScreen() {
@@ -163,7 +164,7 @@ export default function ProfileScreen() {
               }}
               // RN `Switch` can ignore disabled thumb color in some cases,
               // so force the OFF thumb to a non-black gray.
-              thumbColor={profile.is_available ? '#000' : '#666'}
+              thumbColor="#fff"
             />
           </View>
         )}
@@ -197,17 +198,19 @@ export default function ProfileScreen() {
         </TouchableOpacity>
 
         <View style={styles.menu}>
-          {profile && (
+          {profile ? (
             <TouchableOpacity
               style={styles.menuItem}
-              onPress={() => router.push({ pathname: '/(tabs)/profile/setup', params: { from: 'profile' } })}
+              onPress={() =>
+                router.push({ pathname: '/(tabs)/profile/setup', params: { from: 'profile' } } as Parameters<typeof router.push>[0])
+              }
               activeOpacity={0.7}
             >
-              <Ionicons name="construct-outline" size={22} color="#000" style={styles.menuIcon} />
-              <Text style={styles.menuText}>Services, bio & rates</Text>
+              <Ionicons name="create-outline" size={22} color="#000" style={styles.menuIcon} />
+              <Text style={styles.menuText}>Edit profile</Text>
               <Ionicons name="chevron-forward" size={20} color="#999" />
             </TouchableOpacity>
-          )}
+          ) : null}
           {menuItems.map((item) => (
             <TouchableOpacity
               key={item.id}
@@ -264,11 +267,11 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: '#FFEB3B',
+    backgroundColor: '#E8E8E8',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarInitials: { fontSize: 32, fontWeight: '600', color: '#000' },
+  avatarInitials: { fontSize: 32, fontWeight: '600', color: '#666' },
   userName: { fontSize: 18, fontWeight: '600', color: '#000', textAlign: 'center' },
   email: { fontSize: 14, color: '#666', marginTop: 4, textAlign: 'center' },
   bioUnderName: { fontSize: 14, color: '#666', marginTop: 4, textAlign: 'center', paddingHorizontal: 16 },

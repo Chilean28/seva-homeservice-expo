@@ -3,6 +3,10 @@ import { UserType } from '../types/enums';
 import { supabase } from './client';
 import { getEmailConfirmationRedirectTo } from './handleAuthDeepLink';
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
 /**
  * When email confirmation is required, signUp() often returns session: null — the client cannot
  * INSERT into public.users (RLS needs auth.uid()). Use database/auth-users-insert-profile-trigger.sql
@@ -89,10 +93,11 @@ export function formatPhoneE164(phone: string): string {
  */
 export async function signUp(data: SignUpData) {
   const { email, password, full_name, user_type } = data;
+  const normalizedEmail = normalizeEmail(email);
 
   // Create auth user with email and password
   const { data: authData, error: authError } = await supabase.auth.signUp({
-    email,
+    email: normalizedEmail,
     password,
     options: {
       emailRedirectTo: getEmailConfirmationRedirectTo(),
@@ -137,7 +142,7 @@ export interface EmailOtpSignUpComplete {
 export async function requestEmailOtpSignUp(data: EmailOtpSignUpRequest) {
   const { email } = data;
   const { error } = await supabase.auth.signInWithOtp({
-    email: email.trim(),
+    email: normalizeEmail(email),
     options: {
       shouldCreateUser: true,
     },
@@ -152,7 +157,7 @@ export async function completeEmailOtpSignUp(data: EmailOtpSignUpComplete) {
   const { email, token, password, full_name, user_type } = data;
   const trimmed = token.replace(/\s/g, '');
   const { data: authData, error: verifyError } = await supabase.auth.verifyOtp({
-    email: email.trim(),
+    email: normalizeEmail(email),
     token: trimmed,
     type: 'email',
   });
@@ -248,7 +253,7 @@ export async function signIn(data: SignInData) {
   const { email, password } = data;
 
   const { data: authData, error } = await supabase.auth.signInWithPassword({
-    email,
+    email: normalizeEmail(email),
     password,
   });
 
@@ -276,10 +281,30 @@ export function loginErrorMessage(error: unknown): string {
         ? String((error as { code: string }).code)
         : '';
     if (code === 'email_not_confirmed' || /email not confirmed/i.test(msg)) {
-      return 'Please confirm your email first. Check your inbox for the verification link.';
+      return 'Please confirm your email first. Check your inbox for the verification code.';
+    }
+    if (code.includes('over_') || /rate limit|too many requests|wait/i.test(msg)) {
+      return 'Too many attempts. Please wait and try again.';
     }
   }
   return 'Invalid email or password';
+}
+
+export function otpErrorMessage(error: unknown, fallback = 'Invalid or expired code'): string {
+  if (error && typeof error === 'object' && 'message' in error) {
+    const msg = String((error as { message: unknown }).message);
+    const code =
+      'code' in error && (error as { code?: string }).code
+        ? String((error as { code: string }).code)
+        : '';
+    if (
+      code.includes('over_') ||
+      /rate limit|too many requests|wait|retry after|requests? exceeded/i.test(msg)
+    ) {
+      return 'Too many requests. Please wait before trying again.';
+    }
+  }
+  return fallback;
 }
 
 /**
@@ -294,7 +319,7 @@ export async function signOut() {
  * Reset password (send reset email)
  */
 export async function resetPassword(email: string) {
-  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+  const { error } = await supabase.auth.resetPasswordForEmail(normalizeEmail(email), {
     redirectTo: getEmailConfirmationRedirectTo(),
   });
   if (error) throw error;

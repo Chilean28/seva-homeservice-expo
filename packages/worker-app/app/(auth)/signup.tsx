@@ -1,7 +1,7 @@
-import { completeEmailOtpSignUp, requestEmailOtpSignUp } from '../../lib/supabase/auth';
+import { completeEmailOtpSignUp, otpErrorMessage, requestEmailOtpSignUp } from '../../lib/supabase/auth';
 import { UserType } from '../../lib/types/enums';
 import { Link, router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,8 +16,13 @@ import {
 } from 'react-native';
 
 type Step = 'form' | 'code';
+/** Wait between resend / initial send cooldown on code step (reduces duplicate OTP emails). */
+const RESEND_COOLDOWN_SECONDS = 45;
+/** Wrong-code tries before asking user to request a new email code (Supabase may rate-limit sooner). */
+const MAX_VERIFY_ATTEMPTS = 5;
 
 export default function WorkerSignUpScreen() {
+  const sendOtpInFlightRef = useRef(false);
   const [step, setStep] = useState<Step>('form');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -25,6 +30,21 @@ export default function WorkerSignUpScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resendAvailableAt, setResendAvailableAt] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(Date.now());
+  const [verifyAttempts, setVerifyAttempts] = useState(0);
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const cooldownRemaining = resendAvailableAt ? Math.max(0, Math.ceil((resendAvailableAt - nowMs) / 1000)) : 0;
+  const resendOnCooldown = cooldownRemaining > 0;
+  const verifyLocked = verifyAttempts >= MAX_VERIFY_ATTEMPTS;
+  const attemptsLeft = Math.max(0, MAX_VERIFY_ATTEMPTS - verifyAttempts);
+
+  useEffect(() => {
+    if (step !== 'code' || !resendOnCooldown) return;
+    const t = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [step, resendOnCooldown]);
 
   const validateForm = () => {
     const name = username.trim();
@@ -33,8 +53,17 @@ export default function WorkerSignUpScreen() {
       return false;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim())) {
+    if (!emailRegex.test(normalizedEmail)) {
       Alert.alert('Error', 'Please enter a valid email address');
+      return false;
+    }
+    // Catch common Gmail typos/malformed domains before sending OTP.
+    if (/@g(mai|mial|mail|amil|mal|maiil)\./i.test(normalizedEmail) && !normalizedEmail.endsWith('@gmail.com')) {
+      Alert.alert('Error', 'Invalid Gmail address. Did you mean @gmail.com?');
+      return false;
+    }
+    if (normalizedEmail.includes('@gmail') && !normalizedEmail.endsWith('@gmail.com')) {
+      Alert.alert('Error', 'Gmail addresses must end with @gmail.com');
       return false;
     }
     if (password.length < 6) {
@@ -49,22 +78,30 @@ export default function WorkerSignUpScreen() {
   };
 
   const handleSendCode = async () => {
-    if (!validateForm()) return;
+    if (!validateForm() || sendOtpInFlightRef.current) return;
+    sendOtpInFlightRef.current = true;
     setLoading(true);
     try {
-      await requestEmailOtpSignUp({ email: email.trim() });
+      await requestEmailOtpSignUp({ email: normalizedEmail });
       setCode('');
       setStep('code');
+      setVerifyAttempts(0);
+      setResendAvailableAt(Date.now() + RESEND_COOLDOWN_SECONDS * 1000);
       Alert.alert('Check your email', 'We sent a 6-digit code. Enter it below to finish signing up.');
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Could not send code';
+      const msg = otpErrorMessage(error, 'Could not send code');
       Alert.alert('Error', msg);
     } finally {
       setLoading(false);
+      sendOtpInFlightRef.current = false;
     }
   };
 
   const handleVerify = async () => {
+    if (verifyLocked) {
+      Alert.alert('Too many attempts', 'Please request a new code and try again.');
+      return;
+    }
     const digits = code.replace(/\D/g, '');
     if (digits.length < 6) {
       Alert.alert('Error', 'Enter the 6-digit code from your email');
@@ -73,19 +110,16 @@ export default function WorkerSignUpScreen() {
     setLoading(true);
     try {
       await completeEmailOtpSignUp({
-        email: email.trim(),
+        email: normalizedEmail,
         token: digits,
         password,
         full_name: username.trim(),
         user_type: UserType.WORKER,
       });
-      Alert.alert(
-        'Success',
-        'Worker account created! Complete your profile to start receiving jobs.'
-      );
       router.replace('/(tabs)');
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Invalid or expired code';
+      setVerifyAttempts((n) => n + 1);
+      const msg = otpErrorMessage(error);
       Alert.alert('Verification failed', msg);
     } finally {
       setLoading(false);
@@ -93,16 +127,21 @@ export default function WorkerSignUpScreen() {
   };
 
   const handleResend = async () => {
+    if (resendOnCooldown || sendOtpInFlightRef.current) return;
     if (!validateForm()) return;
+    sendOtpInFlightRef.current = true;
     setLoading(true);
     try {
-      await requestEmailOtpSignUp({ email: email.trim() });
+      await requestEmailOtpSignUp({ email: normalizedEmail });
+      setVerifyAttempts(0);
+      setResendAvailableAt(Date.now() + RESEND_COOLDOWN_SECONDS * 1000);
       Alert.alert('Sent', 'We sent a new code to your email.');
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Could not resend';
+      const msg = otpErrorMessage(error, 'Could not resend');
       Alert.alert('Error', msg);
     } finally {
       setLoading(false);
+      sendOtpInFlightRef.current = false;
     }
   };
 
@@ -132,7 +171,7 @@ export default function WorkerSignUpScreen() {
                   placeholderTextColor="#999"
                   value={username}
                   onChangeText={setUsername}
-                  autoCapitalize="none"
+                  autoCapitalize="words"
                   autoCorrect={false}
                   autoComplete="username"
                 />
@@ -160,7 +199,8 @@ export default function WorkerSignUpScreen() {
                   onChangeText={setPassword}
                   secureTextEntry
                   autoCapitalize="none"
-                  autoComplete="password-new"
+                  autoComplete="off"
+                  textContentType="none"
                 />
               </View>
 
@@ -173,7 +213,8 @@ export default function WorkerSignUpScreen() {
                   onChangeText={setConfirmPassword}
                   secureTextEntry
                   autoCapitalize="none"
-                  autoComplete="password-new"
+                  autoComplete="off"
+                  textContentType="none"
                 />
               </View>
 
@@ -192,6 +233,13 @@ export default function WorkerSignUpScreen() {
           ) : (
             <View style={styles.form}>
               <Text style={styles.emailHint}>{email.trim()}</Text>
+              {verifyLocked ? (
+                <Text style={styles.warnText}>
+                  Too many invalid attempts. Request a new code to continue.
+                </Text>
+              ) : verifyAttempts > 0 ? (
+                <Text style={styles.hintText}>Attempts left: {attemptsLeft}</Text>
+              ) : null}
               <View style={styles.inputContainer}>
                 <TextInput
                   style={styles.input}
@@ -208,7 +256,7 @@ export default function WorkerSignUpScreen() {
               <TouchableOpacity
                 style={[styles.button, loading && styles.buttonDisabled]}
                 onPress={handleVerify}
-                disabled={loading}
+                disabled={loading || verifyLocked}
               >
                 {loading ? (
                   <ActivityIndicator color="#000" />
@@ -220,9 +268,11 @@ export default function WorkerSignUpScreen() {
               <TouchableOpacity
                 style={styles.secondaryBtn}
                 onPress={handleResend}
-                disabled={loading}
+                disabled={loading || resendOnCooldown}
               >
-                <Text style={styles.secondaryBtnText}>Resend code</Text>
+                <Text style={styles.secondaryBtnText}>
+                  {resendOnCooldown ? `Resend in ${cooldownRemaining}s` : 'Resend code'}
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -292,6 +342,16 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginBottom: 16,
+  },
+  warnText: {
+    fontSize: 12,
+    color: '#B45309',
+    marginBottom: 12,
+  },
+  hintText: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 12,
   },
   inputContainer: {
     marginBottom: 16,

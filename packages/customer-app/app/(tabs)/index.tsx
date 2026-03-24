@@ -9,7 +9,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { router, useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
 import HomeMapSection from '@/components/HomeMapSection';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Image,
@@ -65,6 +65,18 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
+}
+
+function formatGeneralLocationFromGeocode(
+  result: Location.LocationGeocodedAddress | null | undefined,
+  lat: number,
+  lng: number
+): string {
+  if (!result) return `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  const parts = [result.district, result.city, result.region, result.country]
+    .filter((p): p is string => Boolean(p && p.trim()))
+    .filter((v, i, arr) => arr.indexOf(v) === i);
+  return parts.length ? parts.join(', ') : `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
 }
 
 type WorkerWithServices = {
@@ -139,6 +151,7 @@ export default function HomeScreen() {
     address: string;
   } | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(true);
+  const realtimeRefetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const locationSummary = useMemo(() => {
     if (loadingLocation) return 'Getting location…';
@@ -193,10 +206,17 @@ export default function HomeScreen() {
           const position = await Location.getCurrentPositionAsync({});
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
+          let generalAddress = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+          try {
+            const [geo] = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+            generalAddress = formatGeneralLocationFromGeocode(geo, lat, lng);
+          } catch {
+            // Fallback to coordinates if reverse geocode fails.
+          }
           setCurrentLocation({
             lat,
             lng,
-            address: `${lat.toFixed(4)}, ${lng.toFixed(4)}`,
+            address: generalAddress,
           });
         }
       } catch (e) {
@@ -274,6 +294,31 @@ export default function HomeScreen() {
   }, [fetchDeals]);
 
   useRefreshOnAppActive(fetchDeals);
+
+  useEffect(() => {
+    const scheduleRefetch = () => {
+      if (realtimeRefetchTimer.current) clearTimeout(realtimeRefetchTimer.current);
+      // Debounce bursts of profile/subscription updates into one refresh.
+      realtimeRefetchTimer.current = setTimeout(() => {
+        fetchDeals();
+      }, 300);
+    };
+
+    const channel = supabase
+      .channel('home-workers-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'worker_profiles' }, scheduleRefetch)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'service_subscriptions' }, scheduleRefetch)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, scheduleRefetch)
+      .subscribe();
+
+    return () => {
+      if (realtimeRefetchTimer.current) {
+        clearTimeout(realtimeRefetchTimer.current);
+        realtimeRefetchTimer.current = null;
+      }
+      void supabase.removeChannel(channel);
+    };
+  }, [fetchDeals]);
 
   const onServicePress = useCallback(
     (service: ServiceRow) => {
@@ -428,10 +473,10 @@ export default function HomeScreen() {
             />
           </View>
 
-          {/* Available Workers (Top Deals) */}
+          {/* Available Workers Near You (Top Deals) */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Available Workers</Text>
+              <Text style={styles.sectionTitle}>Available Workers Near You</Text>
             </View>
             {loadingDeals ? (
               <Text style={styles.dealsEmpty}>Loading...</Text>
@@ -464,7 +509,7 @@ export default function HomeScreen() {
                     </View>
                     <Text style={styles.dealName} numberOfLines={1}>{item.workerName}</Text>
                     <Text style={styles.dealServices} numberOfLines={2}>
-                      {item.services.map((s) => `${s.serviceName} ${s.priceLabel}`).join(' · ')}
+                      {item.services.map((s) => `${s.serviceName} ${s.priceLabel}`).join('  •  ')}
                     </Text>
                   </TouchableOpacity>
                 )}
@@ -472,9 +517,9 @@ export default function HomeScreen() {
             )}
           </View>
 
-          {/* Recent / More Available Workers */}
+          {/* Recommended Workers */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>More Available Workers</Text>
+            <Text style={styles.sectionTitle}>Recommended For You</Text>
             {loadingDeals ? (
               <Text style={styles.dealsEmpty}>Loading...</Text>
             ) : availableWorkers.length === 0 ? (
@@ -495,14 +540,16 @@ export default function HomeScreen() {
                     </View>
                   )}
                   <View style={styles.recentContent}>
-                    <View style={styles.ratingContainer}>
-                      <Ionicons name="star" size={12} color="#4CAF50" />
-                      <Text style={styles.rating}>{item.rating.toFixed(1)}</Text>
-                      <Text style={styles.reviews}>({item.jobsCompleted} jobs)</Text>
+                    <View style={styles.recentTopRow}>
+                      <Text style={styles.recentName} numberOfLines={1}>{item.workerName}</Text>
+                      <View style={styles.recentRatingRight}>
+                        <Ionicons name="star" size={12} color="#4CAF50" />
+                        <Text style={styles.rating}>{item.rating.toFixed(1)}</Text>
+                        <Text style={styles.reviews}>({item.jobsCompleted} jobs)</Text>
+                      </View>
                     </View>
-                    <Text style={styles.recentName} numberOfLines={1}>{item.workerName}</Text>
                     <Text style={styles.recentServices} numberOfLines={2}>
-                      {item.services.map((s) => `${s.serviceName} ${s.priceLabel}`).join(' · ')}
+                      {item.services.map((s) => `${s.serviceName} ${s.priceLabel}`).join('  •  ')}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -751,11 +798,24 @@ const styles = StyleSheet.create({
     flex: 1,
     marginLeft: 12,
   },
+  recentTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  recentRatingRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
   recentName: {
     fontSize: 15,
     fontWeight: '600',
     color: '#000',
     marginTop: 4,
+    flex: 1,
+    marginRight: 8,
   },
   recentService: {
     fontSize: 13,
@@ -765,7 +825,7 @@ const styles = StyleSheet.create({
   recentServices: {
     fontSize: 12,
     color: '#666',
-    marginTop: 4,
+    marginTop: 6,
     lineHeight: 18,
   },
   recentPrice: {

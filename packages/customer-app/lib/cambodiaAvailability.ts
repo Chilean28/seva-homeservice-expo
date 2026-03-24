@@ -111,12 +111,26 @@ export function filterSlotStartsOccupiedByBookings(
   });
 }
 
+/**
+ * Drop slot starts whose start instant is before `nowMs` (default: now).
+ * Matches create-booking validation: schedule must not be in the past.
+ */
+export function filterSlotStartsNotInPast(
+  slotStartsMinutes: number[],
+  workDate: string,
+  nowMs: number = Date.now()
+): number[] {
+  return slotStartsMinutes.filter((mins) => cambodiaLocalToUtc(workDate, mins).getTime() >= nowMs);
+}
+
 /** Slot starts for a day from availability windows, excluding times taken by existing bookings. */
 export function availableSlotStartsForDate(
   windows: AvailWindow[],
   workDate: string,
-  bookingStarts: Date[]
+  bookingStarts: Date[],
+  nowMs: number = Date.now()
 ): number[] {
   const raw = slotStartsForDate(windows, workDate);
-  return filterSlotStartsOccupiedByBookings(raw, workDate, bookingStarts);
+  const unbooked = filterSlotStartsOccupiedByBookings(raw, workDate, bookingStarts);
+  return filterSlotStartsNotInPast(unbooked, workDate, nowMs);
 }

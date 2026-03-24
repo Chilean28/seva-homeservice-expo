@@ -4,7 +4,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'react-native';
-import { ActivityIndicator, Alert, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, LogBox, StyleSheet, Text, View } from 'react-native';
 
 import Constants from 'expo-constants';
 import { AuthProvider, useAuth } from '@/lib/contexts/AuthContext';
@@ -23,6 +23,9 @@ import { handleAuthCallbackDeepLink, isAuthCallbackDeepLink } from '@/lib/supaba
 import { supabase } from '@/lib/supabase/client';
 import { useEffect, useState } from 'react';
 import { router, useSegments } from 'expo-router';
+import * as SplashScreen from 'expo-splash-screen';
+
+void SplashScreen.preventAutoHideAsync();
 
 const LightTheme = {
   ...DefaultTheme,
@@ -45,6 +48,14 @@ function RootLayoutNav() {
   const segments = useSegments();
   const [customerCheck, setCustomerCheck] = useState<CustomerCheck>('idle');
 
+  useEffect(() => {
+    if (!__DEV__) return;
+    LogBox.ignoreLogs([
+      'TypeError: Network request failed',
+      'Network request failed',
+    ]);
+  }, []);
+
   // Only allow users with user_type = 'customer' in the customer app
   useEffect(() => {
     if (!user?.id) {
@@ -58,8 +69,13 @@ function RootLayoutNav() {
       .eq('id', user.id)
       .maybeSingle()
       .then(({ data, error }) => {
-        if (error || !data) {
-          setCustomerCheck('rejected');
+        if (error) {
+          console.warn('[Auth] customer check skipped due to transient error:', error.message);
+          setCustomerCheck('allowed');
+          return;
+        }
+        if (!data) {
+          setCustomerCheck('allowed');
           return;
         }
         if ((data as { user_type: string }).user_type === 'customer') {
@@ -69,6 +85,13 @@ function RootLayoutNav() {
         }
       });
   }, [user?.id]);
+
+  // Keep native splash (logo) visible until auth + customer check finish — avoids flash of wrong UI.
+  useEffect(() => {
+    if (loading) return;
+    if (user?.id && customerCheck === 'loading') return;
+    void SplashScreen.hideAsync();
+  }, [loading, user?.id, customerCheck]);
 
   useEffect(() => {
     if (customerCheck === 'rejected') {
@@ -191,6 +214,7 @@ function RootLayoutNav() {
     return (
       <ThemeProvider value={theme}>
         <View style={styles.checkingRoot}>
+          <Image source={require('../assets/images/splash-icon-white-bg.png')} style={styles.loadingLogo} />
           <ActivityIndicator size="large" color="#666" />
           <Text style={styles.checkingText}>Loading…</Text>
         </View>
@@ -203,6 +227,7 @@ function RootLayoutNav() {
     return (
       <ThemeProvider value={theme}>
         <View style={styles.checkingRoot}>
+          <Image source={require('../assets/images/splash-icon-white-bg.png')} style={styles.loadingLogo} />
           <ActivityIndicator size="large" color="#666" />
           <Text style={styles.checkingText}>Checking account…</Text>
         </View>
@@ -262,6 +287,11 @@ const styles = StyleSheet.create({
   checkingText: {
     fontSize: 16,
     color: '#666',
+  },
+  loadingLogo: {
+    width: 96,
+    height: 96,
+    borderRadius: 24,
   },
 });
 

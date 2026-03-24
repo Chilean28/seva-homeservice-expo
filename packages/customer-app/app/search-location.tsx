@@ -15,6 +15,7 @@ import {
   ActivityIndicator,
   Alert,
   Keyboard,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -25,6 +26,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const RETURN_TO_VALUES = ['create-booking', 'home', 'profile-add-address', 'profile-edit-address'] as const;
 export type ReturnToValue = (typeof RETURN_TO_VALUES)[number];
+type PlaceSuggestion = { label: string; lat: number; lng: number };
+const PHNOM_PENH_BOUNDS = {
+  minLat: 11.45,
+  maxLat: 11.75,
+  minLng: 104.75,
+  maxLng: 105.05,
+};
+
+function isWithinPhnomPenh(lat: number, lng: number): boolean {
+  return (
+    lat >= PHNOM_PENH_BOUNDS.minLat &&
+    lat <= PHNOM_PENH_BOUNDS.maxLat &&
+    lng >= PHNOM_PENH_BOUNDS.minLng &&
+    lng <= PHNOM_PENH_BOUNDS.maxLng
+  );
+}
 
 async function coordsToDisplayName(lat: number, lng: number): Promise<string> {
   try {
@@ -60,10 +77,21 @@ export default function SearchLocationScreen() {
   const mapRef = useRef<SearchLocationMapRef>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentAddress, setCurrentAddress] = useState<string>('Current location');
-  const [coords, setCoords] = useState({ lat: 11.5434, lng: 104.8986 }); // Diamond Island area default
+  const [coords, setCoords] = useState({ lat: 11.5692, lng: 104.9173 });
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
+  const [fetchingSuggestions, setFetchingSuggestions] = useState(false);
   const locationChangeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suggestionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const geofenceAlertAtRef = useRef<number>(0);
+
+  const showPhnomPenhOnlyAlert = useCallback(() => {
+    const now = Date.now();
+    if (now - geofenceAlertAtRef.current < 1200) return;
+    geofenceAlertAtRef.current = now;
+    Alert.alert('Phnom Penh only', 'Please choose a location inside Phnom Penh.');
+  }, []);
 
   const currentAddressSummary = useMemo(() => {
     if (loading) return 'Getting location…';
@@ -116,8 +144,66 @@ export default function SearchLocationScreen() {
   useEffect(() => {
     return () => {
       if (locationChangeTimeoutRef.current) clearTimeout(locationChangeTimeoutRef.current);
+      if (suggestionTimeoutRef.current) clearTimeout(suggestionTimeoutRef.current);
     };
   }, []);
+
+  const fetchSuggestions = useCallback(async (query: string) => {
+    const q = query.trim();
+    if (q.length < 3) {
+      setSuggestions([]);
+      setFetchingSuggestions(false);
+      return;
+    }
+    setFetchingSuggestions(true);
+    try {
+      // Lightweight no-key fallback autocomplete (OSM Nominatim). If this fails, submit still falls back to expo geocode.
+      const url =
+        `https://nominatim.openstreetmap.org/search?format=jsonv2` +
+        `&q=${encodeURIComponent(q + ', Phnom Penh, Cambodia')}` +
+        `&limit=8&addressdetails=1&bounded=1` +
+        `&viewbox=${PHNOM_PENH_BOUNDS.minLng},${PHNOM_PENH_BOUNDS.maxLat},${PHNOM_PENH_BOUNDS.maxLng},${PHNOM_PENH_BOUNDS.minLat}`;
+      const res = await fetch(url, {
+        headers: {
+          Accept: 'application/json',
+          ...(Platform.OS === 'web' ? { 'User-Agent': 'seva-homeservice-app' } : {}),
+        },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as Array<{ display_name?: string; lat?: string; lon?: string }>;
+      const parsed: PlaceSuggestion[] = (data ?? [])
+        .map((item) => {
+          const lat = Number(item.lat);
+          const lng = Number(item.lon);
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+          const label = (item.display_name ?? '').trim();
+          if (!label) return null;
+          if (!isWithinPhnomPenh(lat, lng)) return null;
+          if (!/phnom penh/i.test(label)) return null;
+          return { label, lat, lng };
+        })
+        .filter((v): v is PlaceSuggestion => Boolean(v))
+        .slice(0, 5);
+      setSuggestions(parsed);
+    } catch {
+      setSuggestions([]);
+    } finally {
+      setFetchingSuggestions(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (suggestionTimeoutRef.current) clearTimeout(suggestionTimeoutRef.current);
+    if (q.length < 3) {
+      setSuggestions([]);
+      setFetchingSuggestions(false);
+      return;
+    }
+    suggestionTimeoutRef.current = setTimeout(() => {
+      void fetchSuggestions(q);
+    }, 250);
+  }, [searchQuery, fetchSuggestions]);
 
   const buildMapsLink = useCallback((lat: number, lng: number) =>
     `https://www.google.com/maps?q=${lat},${lng}`, []);
@@ -125,6 +211,10 @@ export default function SearchLocationScreen() {
   const handleSelect = useCallback(async () => {
     if (!returnTo) {
       router.back();
+      return;
+    }
+    if (!isWithinPhnomPenh(coords.lat, coords.lng)) {
+      showPhnomPenhOnlyAlert();
       return;
     }
     let area_name: string | null = null;
@@ -145,9 +235,14 @@ export default function SearchLocationScreen() {
       location_link: buildMapsLink(coords.lat, coords.lng),
     });
     router.back();
-  }, [router, returnTo, currentAddress, coords.lat, coords.lng, setPendingLocationSelection, buildMapsLink]);
+  }, [router, returnTo, currentAddress, coords.lat, coords.lng, setPendingLocationSelection, buildMapsLink, showPhnomPenhOnlyAlert]);
 
   const handleLocationChange = useCallback((lat: number, lng: number) => {
+    if (!isWithinPhnomPenh(lat, lng)) {
+      showPhnomPenhOnlyAlert();
+      mapRef.current?.animateToLocation(coords.lat, coords.lng);
+      return;
+    }
     setCoords({ lat, lng });
     setCurrentAddress(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
     if (locationChangeTimeoutRef.current) clearTimeout(locationChangeTimeoutRef.current);
@@ -156,7 +251,7 @@ export default function SearchLocationScreen() {
       const name = await coordsToDisplayName(lat, lng);
       setCurrentAddress(name);
     }, 400);
-  }, []);
+  }, [coords.lat, coords.lng, showPhnomPenhOnlyAlert]);
 
   const handlePressMyLocation = useCallback(async () => {
     try {
@@ -168,6 +263,10 @@ export default function SearchLocationScreen() {
       const position = await Location.getCurrentPositionAsync({});
       const lat = position.coords.latitude;
       const lng = position.coords.longitude;
+      if (!isWithinPhnomPenh(lat, lng)) {
+        showPhnomPenhOnlyAlert();
+        return;
+      }
       setCoords({ lat, lng });
       mapRef.current?.animateToLocation(lat, lng);
       const name = await coordsToDisplayName(lat, lng);
@@ -175,12 +274,24 @@ export default function SearchLocationScreen() {
     } catch (e) {
       Alert.alert('Error', 'Could not get your location. Try again.');
     }
-  }, []);
+  }, [showPhnomPenhOnlyAlert]);
 
   const handleSearchSubmit = useCallback(async () => {
     const query = searchQuery.trim();
     if (!query) return;
     Keyboard.dismiss();
+    if (suggestions.length > 0) {
+      const best = suggestions[0];
+      if (!isWithinPhnomPenh(best.lat, best.lng)) {
+        showPhnomPenhOnlyAlert();
+        return;
+      }
+      setCoords({ lat: best.lat, lng: best.lng });
+      mapRef.current?.animateToLocation(best.lat, best.lng);
+      setCurrentAddress(best.label);
+      setSuggestions([]);
+      return;
+    }
     setSearching(true);
     try {
       const results = await Location.geocodeAsync(query);
@@ -190,6 +301,10 @@ export default function SearchLocationScreen() {
         return;
       }
       const { latitude: lat, longitude: lng } = results[0];
+      if (!isWithinPhnomPenh(lat, lng)) {
+        showPhnomPenhOnlyAlert();
+        return;
+      }
       setCoords({ lat, lng });
       mapRef.current?.animateToLocation(lat, lng);
       const name = await coordsToDisplayName(lat, lng);
@@ -199,10 +314,28 @@ export default function SearchLocationScreen() {
     } finally {
       setSearching(false);
     }
-  }, [searchQuery]);
+  }, [searchQuery, suggestions, showPhnomPenhOnlyAlert]);
+
+  const handlePickSuggestion = useCallback((item: PlaceSuggestion) => {
+    if (!isWithinPhnomPenh(item.lat, item.lng)) {
+      showPhnomPenhOnlyAlert();
+      return;
+    }
+    Keyboard.dismiss();
+    setSearchQuery(item.label);
+    setCoords({ lat: item.lat, lng: item.lng });
+    mapRef.current?.animateToLocation(item.lat, item.lng);
+    setCurrentAddress(item.label);
+    setSuggestions([]);
+  }, [showPhnomPenhOnlyAlert]);
 
   const handleSelectFromMap = useCallback(
     async (lat: number, lng: number) => {
+      if (!isWithinPhnomPenh(lat, lng)) {
+        showPhnomPenhOnlyAlert();
+        mapRef.current?.animateToLocation(coords.lat, coords.lng);
+        return;
+      }
       const address = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
       setCoords({ lat, lng });
       setCurrentAddress(address);
@@ -227,7 +360,7 @@ export default function SearchLocationScreen() {
       }
       router.back();
     },
-    [router, returnTo, setPendingLocationSelection]
+    [router, returnTo, setPendingLocationSelection, showPhnomPenhOnlyAlert, coords.lat, coords.lng]
   );
 
   return (
@@ -266,6 +399,30 @@ export default function SearchLocationScreen() {
           )}
         </TouchableOpacity>
       </View>
+      {(fetchingSuggestions || suggestions.length > 0) && (
+        <View style={styles.suggestionPanel}>
+          {fetchingSuggestions && suggestions.length === 0 ? (
+            <View style={styles.suggestionLoadingRow}>
+              <ActivityIndicator size="small" color="#666" />
+              <Text style={styles.suggestionLoadingText}>Searching…</Text>
+            </View>
+          ) : (
+            suggestions.map((item, idx) => (
+              <TouchableOpacity
+                key={`${item.lat}-${item.lng}-${idx}`}
+                style={[styles.suggestionRow, idx === suggestions.length - 1 && styles.suggestionRowLast]}
+                onPress={() => handlePickSuggestion(item)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="location-outline" size={18} color="#777" />
+                <Text style={styles.suggestionText} numberOfLines={2}>
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            ))
+          )}
+        </View>
+      )}
 
       {/* My Current Location - shows general location name from reverse geocode */}
       <View style={styles.currentLocationRow}>
@@ -356,6 +513,43 @@ const styles = StyleSheet.create({
   },
   searchSubmitBtnDisabled: {
     opacity: 0.6,
+  },
+  suggestionPanel: {
+    marginHorizontal: 16,
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+  },
+  suggestionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  suggestionRowLast: {
+    borderBottomWidth: 0,
+  },
+  suggestionText: {
+    flex: 1,
+    fontSize: 14,
+    color: '#222',
+  },
+  suggestionLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  suggestionLoadingText: {
+    fontSize: 14,
+    color: '#666',
   },
   currentLocationRow: {
     paddingHorizontal: 16,

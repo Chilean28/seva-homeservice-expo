@@ -177,15 +177,11 @@ export default function DashboardScreen() {
                 onValueChange={setAvailability}
                 disabled={availabilityGateLoading || !hasAvailabilitySlots}
                 trackColor={{ false: '#e5e5e5', true: '#FFEB3B' }}
-                thumbColor="#000"
+                thumbColor="#fff"
               />
             </View>
 
-            <TouchableOpacity
-              style={styles.balanceCard}
-              onPress={() => router.push('/payouts')}
-              activeOpacity={0.85}
-            >
+            <View style={styles.balanceCard}>
               <Text style={styles.balanceCardTitle}>Balance</Text>
               {stripeLoading && !balances ? (
                 <ActivityIndicator size="small" color="#000" style={{ marginVertical: 8 }} />
@@ -213,11 +209,13 @@ export default function DashboardScreen() {
                   </Text>
                 </>
               )}
-            </TouchableOpacity>
+            </View>
 
             <TouchableOpacity
               style={styles.setRatesBtn}
-              onPress={() => router.push('/(tabs)/profile/set-rates')}
+              // onPress={() =>
+              //   router.push({ pathname: '/(tabs)/profile/set-rates', params: { from: 'dashboard' } })
+              // }
               activeOpacity={0.85}
             >
               <Ionicons name="pricetag-outline" size={20} color="#666" />
@@ -241,7 +239,9 @@ export default function DashboardScreen() {
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Recent jobs</Text>
-                <TouchableOpacity onPress={() => router.push('/(tabs)/jobs')}>
+                <TouchableOpacity
+                  onPress={() => router.push({ pathname: '/(tabs)/jobs', params: { tab: 'history' } })}
+                >
                   <Text style={styles.seeAll}>See all</Text>
                 </TouchableOpacity>
               </View>

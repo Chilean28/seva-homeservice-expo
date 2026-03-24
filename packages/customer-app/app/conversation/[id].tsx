@@ -3,7 +3,12 @@ import {
   APP_SCREEN_HEADER_BG,
   appScreenHeaderBarPadding,
   appScreenHeaderTitleStyle,
+  formatAudioTime,
   isJobChatOpen,
+  openPhoneDialer,
+  parseVoiceDurationMs,
+  useChatKeyboard,
+  type PhoneDialerCopy,
 } from '@seva/shared';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useUnreadChat } from '@/lib/contexts/UnreadChatContext';
@@ -20,10 +25,7 @@ import {
   Animated,
   FlatList,
   Image,
-  Keyboard,
   KeyboardAvoidingView,
-  LayoutAnimation,
-  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -50,25 +52,20 @@ type ConvMeta = {
   bookingId: string | null;
   workerId: string | null;
   avatarUrl: string | null;
-  /** Worker's phone from profile (for tel: link) */
+  /** Worker's phone — canonical `users.phone` (via join) */
   workerPhone: string | null;
 };
 
-function formatAudioTime(ms: number): string {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-function parseVoiceDurationMs(body: string | null | undefined): number {
-  const t = (body ?? '').trim();
-  if (/^\d+$/.test(t)) {
-    const n = parseInt(t, 10);
-    return n > 0 && n < 3600000 ? n : 0;
-  }
-  return 0;
-}
+const CALL_WORKER_COPY: PhoneDialerCopy = {
+  noPhoneTitle: 'No phone number',
+  noPhoneMessage: 'This worker has not added a phone number to their profile.',
+  invalidTitle: 'Invalid number',
+  invalidMessage: 'Could not use this phone number.',
+  dialerUnsupportedTitle: 'Unable to call',
+  dialerUnsupportedMessage: 'This device cannot open the phone dialer.',
+  openFailedTitle: 'Unable to call',
+  openFailedMessage: 'Could not open the phone app.',
+};
 
 export default function ConversationScreen() {
   const { user } = useAuth();
@@ -88,8 +85,7 @@ export default function ConversationScreen() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [pendingImageUris, setPendingImageUris] = useState<string[]>([]);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const { keyboardVisible, keyboardHeight } = useChatKeyboard();
   const listRef = useRef<FlatList>(null);
   /** Last known booking status (for realtime status alerts). */
   const prevBookingStatusRef = useRef<string | null>(null);
@@ -149,47 +145,6 @@ export default function ConversationScreen() {
   }, [playbackIsPlaying, playingMessageId, playPulseAnim]);
 
   useEffect(() => {
-    const show = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      (e) => {
-        if (Platform.OS === 'ios') {
-          LayoutAnimation.configureNext({
-            duration: e.duration ?? 250,
-            update: { type: LayoutAnimation.Types.keyboard },
-          });
-        }
-        setKeyboardVisible(true);
-        setKeyboardHeight(e.endCoordinates?.height ?? 0);
-      }
-    );
-    const hide = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      (e) => {
-        if (Platform.OS === 'ios') {
-          const duration =
-            e && typeof e === 'object' && 'duration' in e && typeof (e as { duration?: number }).duration === 'number'
-              ? (e as { duration: number }).duration
-              : 250;
-          LayoutAnimation.configureNext({
-            duration,
-            update: { type: LayoutAnimation.Types.keyboard },
-          });
-        }
-        setKeyboardHeight(0);
-        if (Platform.OS === 'android') {
-          setTimeout(() => setKeyboardVisible(false), 100);
-        } else {
-          setKeyboardVisible(false);
-        }
-      }
-    );
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
-
-  useEffect(() => {
     if (keyboardHeight > 0) {
       const t = setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
       return () => clearTimeout(t);
@@ -213,7 +168,7 @@ export default function ConversationScreen() {
       const { data: conv } = await supabase
         .from('conversations')
         .select(
-          'customer_id, worker_id, booking_id, worker_profiles ( user_id, users ( full_name, avatar_url, phone ) ), bookings ( id, scheduled_date, status, services ( name ) )'
+          'customer_id, worker_id, booking_id, worker_profiles ( users ( full_name, avatar_url, phone ) ), bookings ( id, scheduled_date, status, services ( name ) )'
         )
         .eq('id', conversationId)
         .single();
@@ -239,14 +194,21 @@ export default function ConversationScreen() {
         const isCustomer = c.customer_id === user.id;
         const otherName = c.worker_profiles?.users?.full_name ?? (isCustomer ? 'Worker' : 'Customer');
         const avatarUrl = c.worker_profiles?.users?.avatar_url ?? null;
-        const workerPhone = (c.worker_profiles?.users?.phone ?? '').trim() || null;
+        const resolvedWorkerPhone = (c.worker_profiles?.users?.phone ?? '').trim() || null;
         const b = Array.isArray(c.bookings) ? c.bookings[0] : c.bookings;
         const serviceName = b?.services?.name ?? '';
         const rawId = b?.id;
         const bookingId = rawId ? String(rawId) : null;
         const workerId = c.worker_id ? String(c.worker_id) : null;
         prevBookingStatusRef.current = b?.status ?? null;
-        setMeta({ otherName, serviceName, bookingId, workerId, avatarUrl, workerPhone });
+        setMeta({
+          otherName,
+          serviceName,
+          bookingId,
+          workerId,
+          avatarUrl,
+          workerPhone: resolvedWorkerPhone,
+        });
         setBookingScheduledAt(b?.scheduled_date ?? null);
       }
       fetchMessages();
@@ -652,20 +614,7 @@ export default function ConversationScreen() {
   }, [meta.workerId]);
 
   const onCallWorker = useCallback(() => {
-    const raw = meta.workerPhone?.trim();
-    if (!raw) {
-      Alert.alert('No phone number', 'This worker has not added a phone number to their profile.');
-      return;
-    }
-    const digits = raw.replace(/[^\d+]/g, '');
-    if (digits.replace(/^\+/, '').length < 8) {
-      Alert.alert('Invalid number', 'Could not use this phone number.');
-      return;
-    }
-    const url = `tel:${digits}`;
-    Linking.openURL(url).catch(() => {
-      Alert.alert('Unable to call', 'Could not open the phone app.');
-    });
+    openPhoneDialer(meta.workerPhone, CALL_WORKER_COPY);
   }, [meta.workerPhone]);
 
   if (!conversationId) {
@@ -853,7 +802,7 @@ export default function ConversationScreen() {
               styles.inputRow,
               {
                 paddingBottom: keyboardVisible
-                  ? 0
+                  ? 8
                   : Platform.OS === 'android'
                     ? 12
                     : 12 + insets.bottom,
@@ -1057,8 +1006,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFEB3B',
     borderRadius: 22,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    minHeight: 44,
+    paddingVertical: 6,
+    minHeight: 40,
     maxHeight: 220,
   },
   /** Taller composer when thumbnails + text so nothing sits under the keyboard. */
@@ -1098,6 +1047,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 6,
+    marginBottom: 6,
   },
   micBtn: {
     width: 40,
@@ -1105,6 +1055,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 4,
+    marginBottom: 6,
   },
   micBtnDisabled: { opacity: 0.5 },
   sendBtn: {
@@ -1115,6 +1066,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 4,
+    marginBottom: 6,
   },
   sendBtnDisabled: { opacity: 0.5 },
   chatEndedBar: {

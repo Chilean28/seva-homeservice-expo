@@ -481,7 +481,12 @@ export default function ReviewBookingScreen() {
       <View style={styles.container}>
         <SafeAreaView style={styles.headerSafe} edges={['top']}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              style={styles.backBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
+            >
               <Ionicons name="arrow-back" size={24} color="#000" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Review Booking</Text>
@@ -503,7 +508,12 @@ export default function ReviewBookingScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#FFEB3B" />
       <SafeAreaView style={styles.headerSafe} edges={['top']}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
             <Ionicons name="arrow-back" size={24} color="#000" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Review Booking</Text>
@@ -524,7 +534,12 @@ export default function ReviewBookingScreen() {
         </View>
         <View style={styles.serviceRow}>
           <Text style={styles.serviceName}>{serviceName}</Text>
-          <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            accessibilityRole="button"
+            accessibilityLabel="Edit booking details"
+          >
             <Ionicons name="options-outline" size={20} color="#666" />
           </TouchableOpacity>
         </View>
@@ -635,7 +650,12 @@ export default function ReviewBookingScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={phonePromptVisible} transparent animationType="fade">
+      <Modal
+        visible={phonePromptVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPhonePromptVisible(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.phoneModalCard}>
             <Text style={styles.phoneModalTitle}>Phone number required</Text>
@@ -674,7 +694,12 @@ export default function ReviewBookingScreen() {
         </View>
       </Modal>
 
-      <Modal visible={showConfirmedModal} transparent animationType="fade">
+      <Modal
+        visible={showConfirmedModal}
+        transparent
+        animationType="fade"
+        onRequestClose={onConfirmModalOk}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalIconWrap}>
@@ -697,7 +722,12 @@ export default function ReviewBookingScreen() {
         </View>
       </Modal>
 
-      <Modal visible={!!checkoutUrl} animationType="slide" statusBarTranslucent>
+      <Modal
+        visible={!!checkoutUrl}
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setCheckoutUrl(null)}
+      >
         <View style={styles.checkoutModalContainer}>
           <View style={[styles.checkoutModalHeader, { paddingTop: insets.top + 12 }]}>
             <Text style={styles.checkoutModalTitle}>Pay with card</Text>
@@ -705,6 +735,8 @@ export default function ReviewBookingScreen() {
               onPress={() => setCheckoutUrl(null)}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               style={styles.checkoutModalCloseBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Close card payment"
             >
               <Ionicons name="close" size={28} color="#000" />
             </TouchableOpacity>
@@ -744,7 +776,7 @@ const styles = StyleSheet.create({
     backgroundColor: APP_SCREEN_HEADER_BG,
     ...appScreenHeaderBarPadding,
   },
-  backBtn: { padding: 4 },
+  backBtn: { minWidth: 44, minHeight: 44, padding: 4, justifyContent: 'center', alignItems: 'center' },
   headerTitle: { ...appScreenHeaderTitleStyle },
   headerBack: { width: 40 },
   scroll: { flex: 1 },
@@ -965,6 +997,6 @@ const styles = StyleSheet.create({
     borderBottomColor: '#E0E0E0',
   },
   checkoutModalTitle: { fontSize: 18, fontWeight: '700', color: '#000' },
-  checkoutModalCloseBtn: { padding: 4 },
+  checkoutModalCloseBtn: { minWidth: 44, minHeight: 44, padding: 4, justifyContent: 'center', alignItems: 'center' },
   checkoutWebView: { flex: 1 },
 });

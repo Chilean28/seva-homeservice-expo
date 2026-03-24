@@ -11,9 +11,10 @@ import {
   useRefreshOnAppActive,
 } from '@seva/shared';
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   RefreshControl,
   ScrollView,
@@ -76,7 +77,7 @@ function formatDateTime(iso: string): string {
   }
 }
 
-type BookingsTab = 'upcoming' | 'history';
+type BookingsTab = 'pending' | 'active' | 'history';
 
 export default function BookingScreen() {
   const { user } = useAuth();
@@ -85,7 +86,32 @@ export default function BookingScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [tab, setTab] = useState<BookingsTab>('upcoming');
+  const [tab, setTab] = useState<BookingsTab>('pending');
+  const bookingStatusMapRef = useRef<Record<string, string>>({});
+  const ratingPromptedBookingIdsRef = useRef<Set<string>>(new Set());
+
+  const promptForRatingIfNeeded = useCallback(
+    async (bookingId: string) => {
+      if (!user?.id || ratingPromptedBookingIdsRef.current.has(bookingId)) return;
+      const { data, error } = await supabase
+        .from('reviews')
+        .select('id')
+        .eq('booking_id', bookingId)
+        .maybeSingle();
+      if (error || data) return;
+      ratingPromptedBookingIdsRef.current.add(bookingId);
+      Alert.alert('Rate your experience', 'Your booking is complete. Please leave a rating.', [
+        { text: 'Later', style: 'cancel' },
+        {
+          text: 'Rate now',
+          onPress: () => {
+            router.push(`/booking/${bookingId}` as Parameters<typeof router.push>[0]);
+          },
+        },
+      ]);
+    },
+    [user?.id]
+  );
 
   const fetchBookings = useCallback(async () => {
     if (!user?.id) {
@@ -128,10 +154,15 @@ export default function BookingScreen() {
     if (err) {
       setError(err.message);
       setBookings([]);
+      bookingStatusMapRef.current = {};
       setPendingBookingCount(0);
     } else {
       const list = (data as BookingRow[]) ?? [];
       setBookings(list);
+      bookingStatusMapRef.current = list.reduce<Record<string, string>>((acc, row) => {
+        acc[row.id] = row.status;
+        return acc;
+      }, {});
       setPendingBookingCount(
         list.filter(
           (b) => b.status === 'pending' && !isPendingBookingResponseExpired(b.status, b.response_deadline_at)
@@ -148,12 +179,42 @@ export default function BookingScreen() {
 
   useEffect(() => {
     if (!user?.id) return;
-    const channel = subscribeToCustomerBookings(user.id, () => {
+    const channel = subscribeToCustomerBookings(user.id, (payload) => {
+      const row = (payload?.new ?? payload?.old ?? null) as { id?: string; status?: string } | null;
+      const bookingId = row?.id;
+      const incomingStatus = row?.status;
+      if (bookingId && incomingStatus) {
+        const prevStatus = bookingStatusMapRef.current[bookingId];
+        if (prevStatus && prevStatus !== incomingStatus) {
+          const statusText = STATUS_LABEL[incomingStatus] ?? incomingStatus.replace(/_/g, ' ');
+          Alert.alert('Booking update', `Your booking is now ${statusText}.`);
+          if (
+            tab === 'pending' &&
+            prevStatus === 'pending' &&
+            (incomingStatus === 'accepted' || incomingStatus === 'ongoing')
+          ) {
+            setTab('active');
+          }
+          if (incomingStatus === 'completed' && prevStatus !== 'completed') {
+            void promptForRatingIfNeeded(bookingId);
+          }
+        }
+        bookingStatusMapRef.current[bookingId] = incomingStatus;
+      }
       fetchBookings();
     });
     return () => {
       unsubscribe(channel);
     };
+  }, [user?.id, fetchBookings, tab, promptForRatingIfNeeded]);
+
+  // Fallback for rare missed realtime events: refresh while this screen is open.
+  useEffect(() => {
+    if (!user?.id) return;
+    const interval = setInterval(() => {
+      fetchBookings();
+    }, 6000);
+    return () => clearInterval(interval);
   }, [user?.id, fetchBookings]);
 
   const onRefresh = useCallback(() => {
@@ -178,10 +239,12 @@ export default function BookingScreen() {
     row.status === 'completed' ||
     row.status === 'cancelled' ||
     isPendingBookingResponseExpired(row.status, row.response_deadline_at);
-  const upcomingBookings = bookings.filter((r) => !isHistoryRow(r));
+  const pendingBookings = bookings.filter(
+    (r) => r.status === 'pending' && !isPendingBookingResponseExpired(r.status, r.response_deadline_at)
+  );
+  const activeBookings = bookings.filter((r) => r.status === 'accepted' || r.status === 'ongoing');
   const historyBookings = bookings.filter((r) => isHistoryRow(r));
-  const displayList = tab === 'upcoming' ? upcomingBookings : historyBookings;
-  const showingHistory = tab === 'history';
+  const displayList = tab === 'pending' ? pendingBookings : tab === 'active' ? activeBookings : historyBookings;
 
   return (
     <View style={styles.container}>
@@ -189,31 +252,27 @@ export default function BookingScreen() {
       <View style={styles.headerWrapper}>
         <SafeAreaView style={styles.headerSafe} edges={['top']}>
           <View style={styles.header}>
-            <View style={[styles.headerSide, styles.headerSideLeft]}>
-              {showingHistory ? (
-                <TouchableOpacity
-                  onPress={() => setTab('upcoming')}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                >
-                  <Ionicons name="arrow-back" size={24} color="#000" />
-                </TouchableOpacity>
-              ) : null}
-            </View>
+            <View style={styles.headerSide} />
             <View style={styles.headerCenter}>
-              <Text style={styles.headerTitle}>{showingHistory ? 'History' : 'Booking'}</Text>
+              <Text style={styles.headerTitle}>Booking</Text>
             </View>
-            <View style={[styles.headerSide, styles.headerSideRight]}>
-              {!showingHistory ? (
-                <TouchableOpacity
-                  onPress={() => setTab('history')}
-                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                >
-                  <Ionicons name="time-outline" size={24} color="#000" />
-                </TouchableOpacity>
-              ) : null}
-            </View>
+            <View style={styles.headerSide} />
           </View>
         </SafeAreaView>
+      </View>
+      <View style={styles.tabs}>
+        {(['pending', 'active', 'history'] as BookingsTab[]).map((t) => (
+          <TouchableOpacity
+            key={t}
+            style={[styles.tab, tab === t && styles.tabActive]}
+            onPress={() => setTab(t)}
+            activeOpacity={0.8}
+          >
+            <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
+              {t.charAt(0).toUpperCase() + t.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       <ScrollView
@@ -240,14 +299,20 @@ export default function BookingScreen() {
           </View>
         ) : displayList.length === 0 ? (
           <View style={styles.centered}>
-            <Ionicons name={tab === 'history' ? 'document-text-outline' : 'calendar-outline'} size={56} color="#CCC" />
+            <Ionicons
+              name={tab === 'history' ? 'document-text-outline' : tab === 'active' ? 'briefcase-outline' : 'time-outline'}
+              size={56}
+              color="#CCC"
+            />
             <Text style={styles.emptyTitle}>
-              {tab === 'history' ? 'No history yet' : 'No bookings yet'}
+              {tab === 'history' ? 'No history yet' : tab === 'active' ? 'No active bookings' : 'No pending bookings'}
             </Text>
             <Text style={styles.emptySubtext}>
               {tab === 'history'
                 ? 'Completed, cancelled, and expired requests appear here.'
-                : 'Your bookings will appear here when you book a service.'}
+                : tab === 'active'
+                  ? 'Accepted and in-progress bookings appear here.'
+                  : 'Pending booking requests waiting for worker response appear here.'}
             </Text>
           </View>
         ) : (
@@ -340,7 +405,7 @@ export default function BookingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#ffffff',
   },
   headerWrapper: {
     backgroundColor: APP_SCREEN_HEADER_BG,
@@ -354,16 +419,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     ...appScreenHeaderBarPadding,
   },
-  headerSide: {
-    width: 40,
-    minHeight: 24,
-  },
-  headerSideLeft: {
-    alignItems: 'flex-start',
-  },
-  headerSideRight: {
-    alignItems: 'flex-end',
-  },
+  headerSide: { width: 24 },
   headerCenter: {
     flex: 1,
     alignItems: 'center',
@@ -372,14 +428,37 @@ const styles = StyleSheet.create({
   headerTitle: {
     ...appScreenHeaderTitleStyle,
   },
+  tabs: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 20,
+    marginTop: 20,
+    marginBottom: 16,
+  },
+  tab: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+  },
+  tabActive: {
+    backgroundColor: '#FFEB3B',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  tabTextActive: {
+    color: '#000',
+  },
   content: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#ffffff',
   },
   contentContainer: {
     padding: 20,
-    paddingTop: 16,
-    paddingBottom: 32,
+    paddingBottom: 120,
   },
   centered: {
     paddingVertical: 48,
@@ -458,9 +537,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    borderWidth: 1.5,
-    borderColor: '#000',
-    backgroundColor: '#fff',
+    backgroundColor: '#E8E8E8',
     overflow: 'hidden',
     marginRight: 12,
   },

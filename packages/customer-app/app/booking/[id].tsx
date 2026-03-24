@@ -13,7 +13,7 @@ import {
 import { BookingStatus } from '@/lib/types/enums';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -48,9 +48,11 @@ type BookingRow = {
   price_lock_note: string | null;
   notes: string | null;
   created_at: string;
+  updated_at?: string;
   response_deadline_at: string | null;
   payment_method?: 'card' | 'cash' | null;
   payment_status?: 'unpaid' | 'pending' | 'paid' | 'refunded' | null;
+  completed_at?: string | null;
   cash_platform_fee_status?: 'pending' | 'charged' | 'failed' | null;
   cash_platform_fee_cents?: number | null;
   services: { name: string } | null;
@@ -138,6 +140,13 @@ function formatDateTime(iso: string): string {
 }
 
 type ExistingReview = { id: string; rating: number; comment: string | null };
+type RefundRequestRow = {
+  id: string;
+  status: 'requested' | 'worker_confirmed' | 'processing' | 'succeeded' | 'failed' | 'rejected' | 'expired';
+  reason: string | null;
+  requested_at: string;
+  error_message: string | null;
+};
 
 export default function BookingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -155,6 +164,13 @@ export default function BookingDetailScreen() {
   const [confirmingPrice, setConfirmingPrice] = useState(false);
   const [showExpiredModal, setShowExpiredModal] = useState(false);
   const [expiredModalDismissed, setExpiredModalDismissed] = useState(false);
+  const [refundRequest, setRefundRequest] = useState<RefundRequestRow | null>(null);
+  const [showRefundModal, setShowRefundModal] = useState(false);
+  const [refundReason, setRefundReason] = useState('');
+  const [submittingRefund, setSubmittingRefund] = useState(false);
+  const prevRealtimeStatusRef = useRef<string | null>(null);
+  /** Tracks last known lock so we only alert when worker newly sets price_locked_at (Realtime). */
+  const prevPriceLockedAtRef = useRef<string | null>(null);
 
   const fetchBooking = useCallback(async () => {
     if (!user?.id || !id) {
@@ -184,9 +200,11 @@ export default function BookingDetailScreen() {
         price_lock_note,
         notes,
         created_at,
+        updated_at,
         response_deadline_at,
         payment_method,
         payment_status,
+        completed_at,
         cash_platform_fee_status,
         cash_platform_fee_cents,
         services (name),
@@ -207,6 +225,9 @@ export default function BookingDetailScreen() {
     } else {
       const b = (data ?? null) as unknown as BookingRow | null;
       setBooking(b);
+      if (b?.status) {
+        prevRealtimeStatusRef.current = b.status;
+      }
       const completed =
         b != null && String(b.status).toLowerCase() === BookingStatus.COMPLETED;
       if (completed && b?.id) {
@@ -228,6 +249,17 @@ export default function BookingDetailScreen() {
         setExistingReview(null);
         setShowRatingModal(false);
       }
+
+      if (b?.id) {
+        const { data: refundData } = await supabase
+          .from('booking_refund_requests')
+          .select('id, status, reason, requested_at, error_message')
+          .eq('booking_id', b.id)
+          .maybeSingle();
+        setRefundRequest((refundData as RefundRequestRow | null) ?? null);
+      } else {
+        setRefundRequest(null);
+      }
     }
     setLoading(false);
   }, [user?.id, id]);
@@ -235,7 +267,13 @@ export default function BookingDetailScreen() {
   useEffect(() => {
     setExpiredModalDismissed(false);
     setShowExpiredModal(false);
+    prevPriceLockedAtRef.current = null;
   }, [id]);
+
+  useEffect(() => {
+    if (!booking || !id || booking.id !== id) return;
+    prevPriceLockedAtRef.current = booking.price_locked_at ?? null;
+  }, [id, booking?.id, booking?.price_locked_at]);
 
   useFocusEffect(
     useCallback(() => {
@@ -258,7 +296,63 @@ export default function BookingDetailScreen() {
           table: 'bookings',
           filter: `id=eq.${id}`,
         },
-        () => {
+        (payload) => {
+          const eventType = (payload as { eventType?: string }).eventType;
+          const newRow = payload?.new as {
+            status?: string;
+            price_locked_at?: string | null;
+            price_confirmed_by_customer_at?: string | null;
+          } | null;
+
+          if (eventType === 'UPDATE' && newRow) {
+            const nextLock = newRow.price_locked_at ?? null;
+            const hadLock = prevPriceLockedAtRef.current != null;
+            if (
+              nextLock &&
+              !hadLock &&
+              newRow.status === BookingStatus.ACCEPTED &&
+              !newRow.price_confirmed_by_customer_at
+            ) {
+              prevPriceLockedAtRef.current = nextLock;
+              Alert.alert(
+                'Final price ready',
+                'Your worker locked the final price for this booking. Confirm now so they can start the job.',
+                [
+                  { text: 'Later', style: 'cancel' },
+                  {
+                    text: 'Confirm now',
+                    onPress: async () => {
+                      if (!user?.id || !id) return;
+                      setConfirmingPrice(true);
+                      const { error } = await supabase
+                        .from('bookings')
+                        .update({ price_confirmed_by_customer_at: new Date().toISOString() } as never)
+                        .eq('id', id)
+                        .eq('customer_id', user.id)
+                        .not('price_locked_at', 'is', null);
+                      setConfirmingPrice(false);
+                      if (error) {
+                        Alert.alert('Error', error.message);
+                      } else {
+                        await fetchBooking();
+                        Alert.alert('Confirmed', 'Final price confirmed. Your worker can now start the job.');
+                      }
+                    },
+                  },
+                ]
+              );
+            }
+          }
+
+          const nextStatus = newRow?.status ?? null;
+          const prevStatus = prevRealtimeStatusRef.current;
+          if (nextStatus && prevStatus && nextStatus !== prevStatus) {
+            const human = STATUS_LABEL[nextStatus] ?? nextStatus.replace(/_/g, ' ');
+            Alert.alert('Booking update', `This booking is now ${human}.`);
+          }
+          if (nextStatus) {
+            prevRealtimeStatusRef.current = nextStatus;
+          }
           void fetchBooking();
         }
       )
@@ -372,6 +466,27 @@ export default function BookingDetailScreen() {
     );
   }, [booking, canCancel, user?.id, router]);
 
+  const requestRefund = useCallback(async () => {
+    if (!booking || !user?.id || !booking.worker_id) return;
+    setSubmittingRefund(true);
+    const { error: insertError } = await supabase.from('booking_refund_requests').insert({
+      booking_id: booking.id,
+      customer_id: user.id,
+      worker_id: booking.worker_id,
+      reason: refundReason.trim() || null,
+      status: 'requested',
+    } as never);
+    setSubmittingRefund(false);
+    if (insertError) {
+      Alert.alert('Refund request failed', insertError.message);
+      return;
+    }
+    setShowRefundModal(false);
+    setRefundReason('');
+    await fetchBooking();
+    Alert.alert('Refund requested', 'Your worker will confirm this request before refund is processed.');
+  }, [booking, user?.id, refundReason, fetchBooking]);
+
   const openChat = useCallback(async () => {
     if (!booking?.worker_id || !user?.id) return;
     // Prefer existing conversation for this booking, then any existing conversation with this worker (reuse one chat per worker)
@@ -473,6 +588,15 @@ export default function BookingDetailScreen() {
   const statusLabel = responseExpired
     ? 'Expired'
     : STATUS_LABEL[booking.status] ?? booking.status;
+  const completionTimeMs = new Date(booking.completed_at ?? booking.updated_at ?? booking.scheduled_date).getTime();
+  const refundWindowEndsAtMs = completionTimeMs + 48 * 60 * 60 * 1000;
+  const refundWindowOpen = Number.isFinite(refundWindowEndsAtMs) && Date.now() <= refundWindowEndsAtMs;
+  const canRequestRefund =
+    booking.status === BookingStatus.COMPLETED &&
+    booking.payment_method === 'card' &&
+    booking.payment_status === 'paid' &&
+    !refundRequest &&
+    refundWindowOpen;
 
   return (
     <View style={styles.container}>
@@ -605,6 +729,43 @@ export default function BookingDetailScreen() {
         </View>
 
         <View style={styles.actions}>
+          {booking.status === BookingStatus.COMPLETED && (
+            <View style={styles.ratingSection}>
+              <Text style={styles.ratingSectionTitle}>Your rating</Text>
+              {existingReview ? (
+                <View style={styles.ratingSummaryCard}>
+                  <View style={styles.ratingSummaryStars}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <Ionicons
+                        key={star}
+                        name={existingReview.rating >= star ? 'star' : 'star-outline'}
+                        size={18}
+                        color={existingReview.rating >= star ? '#FFD54F' : '#CCC'}
+                      />
+                    ))}
+                  </View>
+                  <Text style={styles.ratingSummaryText}>{existingReview.rating}/5</Text>
+                  {existingReview.comment ? (
+                    <Text style={styles.ratingCommentText}>{existingReview.comment}</Text>
+                  ) : (
+                    <Text style={styles.ratingCommentMuted}>No comment added.</Text>
+                  )}
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.rateNowButton}
+                  onPress={() => {
+                    setShowRatingModal(true);
+                    setRatingStep('stars');
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="star-outline" size={20} color="#000" />
+                  <Text style={styles.rateNowButtonText}>Rate this job</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
           {needsConfirmFinalPrice && (
             <TouchableOpacity
               style={styles.confirmPriceButton}
@@ -629,7 +790,7 @@ export default function BookingDetailScreen() {
                 onPress={openChat}
                 activeOpacity={0.8}
               >
-                <Ionicons name="chatbubble-outline" size={20} color="#fff" />
+                <Ionicons name="chatbubble-outline" size={20} color="#000" />
                 <Text style={styles.primaryButtonText}>Message</Text>
               </TouchableOpacity>
             ) : (
@@ -649,6 +810,33 @@ export default function BookingDetailScreen() {
               <Text style={styles.cancelButtonText}>Cancel booking</Text>
             </TouchableOpacity>
           )}
+          {booking.status === BookingStatus.COMPLETED && booking.payment_method === 'card' ? (
+            <View style={styles.refundSection}>
+              <Text style={styles.refundHint}>
+                You can request a refund within 48 hours after completion.
+              </Text>
+              {refundRequest ? (
+                <Text style={styles.refundStatusText}>
+                  Refund status: {refundRequest.status.replace('_', ' ')}
+                </Text>
+              ) : canRequestRefund ? (
+                <TouchableOpacity
+                  style={styles.refundButton}
+                  onPress={() => setShowRefundModal(true)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.refundButtonText}>Request refund</Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={styles.refundClosedText}>
+                  Refund window closed. Requests are available only for 48 hours after completion.
+                </Text>
+              )}
+              <TouchableOpacity onPress={() => router.push('/legal/refund-policy')} activeOpacity={0.7}>
+                <Text style={styles.refundPolicyLink}>Read refund policy</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
 
@@ -709,7 +897,14 @@ export default function BookingDetailScreen() {
                   disabled={selectedRating < 1}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.modalPrimaryBtnText}>Next</Text>
+                  <Text
+                    style={[
+                      styles.modalPrimaryBtnText,
+                      selectedRating < 1 && styles.modalPrimaryBtnTextDisabled,
+                    ]}
+                  >
+                    Next
+                  </Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -735,7 +930,7 @@ export default function BookingDetailScreen() {
                     <Text style={styles.modalSkipBtnText}>Skip</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.modalPrimaryBtn}
+                    style={styles.modalPrimaryBtnHalf}
                     onPress={() => submitReview(false)}
                     disabled={submittingReview}
                     activeOpacity={0.8}
@@ -747,6 +942,43 @@ export default function BookingDetailScreen() {
                 </View>
               </>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showRefundModal} transparent animationType="fade" onRequestClose={() => setShowRefundModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Request refund</Text>
+            <Text style={styles.modalSubtitle}>
+              Tell us what went wrong. Your worker must confirm this request before refund is issued.
+            </Text>
+            <TextInput
+              style={styles.commentInput}
+              placeholder="Add details (optional)"
+              placeholderTextColor="#999"
+              value={refundReason}
+              onChangeText={(t) => setRefundReason(t.length > 500 ? t.slice(0, 500) : t)}
+              multiline
+              maxLength={500}
+              numberOfLines={3}
+              textAlignVertical="top"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.modalSkipBtn} onPress={() => setShowRefundModal(false)} activeOpacity={0.8}>
+                <Text style={styles.modalSkipBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalPrimaryBtnHalf}
+                onPress={requestRefund}
+                disabled={submittingRefund}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.modalPrimaryBtnText}>
+                  {submittingRefund ? 'Submitting…' : 'Submit request'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -958,15 +1190,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FFEB3B',
+    borderWidth: 1,
+    borderColor: '#F9A825',
     paddingVertical: 14,
     borderRadius: 12,
     gap: 8,
   },
   primaryButtonText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
+    fontWeight: '700',
+    color: '#000',
   },
   chatClosedNotice: {
     flexDirection: 'row',
@@ -996,6 +1230,98 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FF3B30',
+  },
+  refundSection: {
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#FFFDE7',
+    borderWidth: 1,
+    borderColor: '#F9E79F',
+  },
+  refundHint: {
+    fontSize: 13,
+    color: '#444',
+    lineHeight: 18,
+  },
+  refundStatusText: {
+    fontSize: 14,
+    color: '#000',
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  refundButton: {
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    backgroundColor: '#FFE082',
+  },
+  refundButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#000',
+  },
+  refundClosedText: {
+    fontSize: 13,
+    color: '#666',
+    lineHeight: 18,
+  },
+  refundPolicyLink: {
+    fontSize: 13,
+    color: '#0A66C2',
+    textDecorationLine: 'underline',
+  },
+  ratingSection: {
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#FFFDE7',
+    borderWidth: 1,
+    borderColor: '#F9E79F',
+  },
+  ratingSectionTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#000',
+  },
+  ratingSummaryCard: {
+    gap: 6,
+  },
+  ratingSummaryStars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  ratingSummaryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000',
+  },
+  ratingCommentText: {
+    fontSize: 13,
+    color: '#444',
+    lineHeight: 18,
+  },
+  ratingCommentMuted: {
+    fontSize: 13,
+    color: '#777',
+  },
+  rateNowButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFEB3B',
+    borderWidth: 1,
+    borderColor: '#F9A825',
+    borderRadius: 10,
+    minHeight: 44,
+    gap: 8,
+    paddingHorizontal: 12,
+  },
+  rateNowButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#000',
   },
   modalOverlay: {
     flex: 1,
@@ -1034,18 +1360,36 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   modalPrimaryBtn: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#FFEB3B',
+    borderWidth: 1,
+    borderColor: '#F9A825',
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  modalPrimaryBtnHalf: {
+    flex: 1,
+    backgroundColor: '#FFEB3B',
+    borderWidth: 1,
+    borderColor: '#F9A825',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
   },
   modalPrimaryBtnDisabled: {
     opacity: 0.5,
   },
   modalPrimaryBtnText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#fff',
+    fontWeight: '700',
+    color: '#000',
+  },
+  modalPrimaryBtnTextDisabled: {
+    color: '#444',
   },
   commentInput: {
     borderWidth: 1,
@@ -1063,15 +1407,16 @@ const styles = StyleSheet.create({
   },
   modalSkipBtn: {
     flex: 1,
+    backgroundColor: '#fff',
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#007AFF',
+    borderColor: '#F9A825',
   },
   modalSkipBtnText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#007AFF',
+    fontWeight: '700',
+    color: '#000',
   },
 });

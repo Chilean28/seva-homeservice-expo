@@ -15,9 +15,19 @@ Run these in your Supabase project **SQL Editor** in this order:
 
 8. **booking-locked-hourly-rate-note.sql** – `locked_hourly_rate` and `price_lock_note` when the worker adjusts rate and/or hours before locking the final total.
 
-9. **worker-availability.sql** (optional) – worker schedule windows + `availability_timezone` on `worker_profiles`, plus `worker_ids_with_upcoming_availability` and `worker_ids_with_availability_in_range` (customer search filters)
+9. **booking-timeouts-and-state-guards.sql** – DB-level lifecycle guards:
+   - blocks accepting expired pending requests
+   - blocks transition to `ongoing` when price is locked but customer has not confirmed
+   - adds `price_confirmation_deadline_at` for locked-price waiting timeout
 
-10. **expire-pending-bookings.sql** (optional) – periodic `UPDATE` to set `status = cancelled` when `response_deadline_at` has passed; use if you want DB truth to match worker “expired” without relying on app-only logic
+10. **expire-pending-bookings.sql** – defines `expire_stale_bookings()` and runs once:
+    - cancels expired pending requests (`response_deadline_at`)
+    - cancels accepted bookings where locked price confirmation deadline passed
+    Then schedule `expire_stale_bookings()` with `pg_cron` for continuous DB truth.
+
+11. **worker-availability.sql** (optional) – worker schedule windows + `availability_timezone` on `worker_profiles`, plus `worker_ids_with_upcoming_availability` and `worker_ids_with_availability_in_range` (customer search filters)
+
+12. **sync-user-worker-phone.sql** – keeps `users.phone` (canonical for chat) and `worker_profiles.phone` in sync for workers via triggers + backfill. Run after `worker_profiles.phone` exists (see `packages/worker-app/database/worker-profile-complete.sql`).
 
 App-specific SQL (e.g. storage buckets, chat schema) lives in each app:
 

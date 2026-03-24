@@ -9,7 +9,7 @@ import { useWorkerProfile } from '@/lib/hooks/useWorkerProfile';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { supabase } from '@/lib/supabase/client';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
@@ -32,11 +32,20 @@ type RateRow = {
 
 export default function SetRatesScreen() {
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ from?: string }>();
   const { user } = useAuth();
   const { workerId, loading: profileLoading, refetch: refetchProfile } = useWorkerProfile(user?.id);
   const [rateRows, setRateRows] = useState<RateRow[]>([]);
   const [serviceRates, setServiceRates] = useState<Record<string, string>>({});
   const [ratesSaving, setRatesSaving] = useState(false);
+
+  const onBack = useCallback(() => {
+    if (params.from === 'dashboard') {
+      router.replace('/(tabs)');
+      return;
+    }
+    router.back();
+  }, [params.from]);
 
   const fetchRates = useCallback(async () => {
     if (!workerId) {
@@ -110,7 +119,7 @@ export default function SetRatesScreen() {
     return (
       <View style={styles.container}>
         <View style={[styles.header, { paddingTop: insets.top + APP_SCREEN_HEADER_PADDING_TOP_INNER }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={onBack} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color="#000" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Set rates</Text>
@@ -126,7 +135,7 @@ export default function SetRatesScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + APP_SCREEN_HEADER_PADDING_TOP_INNER }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={onBack} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Set rates</Text>

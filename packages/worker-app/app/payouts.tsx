@@ -90,7 +90,12 @@ export default function PayoutsScreen() {
     <View style={styles.container}>
       <View style={[styles.headerWrap, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={goBack} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={goBack}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
             <Ionicons name="arrow-back" size={24} color="#000" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Payouts</Text>
@@ -185,7 +190,7 @@ const styles = StyleSheet.create({
     backgroundColor: APP_SCREEN_HEADER_BG,
     ...appScreenHeaderBarPadding,
   },
-  backBtn: { width: 40 },
+  backBtn: { width: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' },
   headerTitle: { ...appScreenHeaderTitleStyle },
   headerBack: { width: 40 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },

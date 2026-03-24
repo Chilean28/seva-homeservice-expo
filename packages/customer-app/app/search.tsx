@@ -54,6 +54,7 @@ const TIME_OPTIONS: { id: TimeFilter; label: string }[] = [
 const PRICE_STEPS = [0, 25, 50, 75, 100, 150];
 const MAX_PRICE_DEFAULT = 150;
 const RADIUS_KM = 15;
+const SEARCH_LOADING_GUARD_MS = 6000;
 
 function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const toRad = (deg: number) => (deg * Math.PI) / 180;
@@ -192,6 +193,7 @@ export default function SearchScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const resultsSectionY = useRef(0);
   const pendingScrollToResultsRef = useRef(false);
+  const loadingGuardTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadRecentSearches = useCallback(async () => {
     try {
@@ -254,37 +256,73 @@ export default function SearchScreen() {
   useEffect(() => {
     let cancelled = false;
     setLoadingDeals(true);
-    Promise.all([
-      supabase
-        .from('worker_profiles')
-        .select(
-          `
-        id,
-        latitude,
-        longitude,
-        rating_average,
-        total_jobs_completed,
-        users (full_name, avatar_url),
-        service_subscriptions (service_id, custom_price, services (name, base_price))
-      `
-        )
-        .eq('is_available', true),
-      fetchWorkerIdsForSearch(dateFilter, timeFilter),
-    ]).then(([{ data, error }, upcomingIds]) => {
-      if (cancelled) return;
-      setLoadingDeals(false);
-      if (!error && data?.length) {
-        let rows = data as WorkerProfileRow[];
-        if (upcomingIds) {
-          rows = rows.filter((w) => upcomingIds.has(w.id));
+    if (loadingGuardTimerRef.current) {
+      clearTimeout(loadingGuardTimerRef.current);
+      loadingGuardTimerRef.current = null;
+    }
+    // Guard: never let this screen stay in loading forever during flaky demo network.
+    loadingGuardTimerRef.current = setTimeout(() => {
+      if (!cancelled) setLoadingDeals(false);
+    }, SEARCH_LOADING_GUARD_MS);
+
+    const run = async () => {
+      try {
+        const timeout = new Promise<null>((resolve) => setTimeout(() => resolve(null), 12000));
+        const result = await Promise.race([
+          Promise.all([
+            supabase
+              .from('worker_profiles')
+              .select(
+                `
+              id,
+              latitude,
+              longitude,
+              rating_average,
+              total_jobs_completed,
+              users (full_name, avatar_url),
+              service_subscriptions (service_id, custom_price, services (name, base_price))
+            `
+              )
+              .eq('is_available', true),
+            fetchWorkerIdsForSearch(dateFilter, timeFilter),
+          ]),
+          timeout,
+        ]);
+
+        if (cancelled) return;
+        if (!result) {
+          // Timeout fallback: avoid permanent loading lock.
+          setWorkers([]);
+          return;
         }
-        setWorkers(groupWorkersWithServices(rows));
-      } else {
-        setWorkers([]);
+
+        const [{ data, error }, upcomingIds] = result;
+        if (!error && data?.length) {
+          let rows = data as WorkerProfileRow[];
+          if (upcomingIds) {
+            rows = rows.filter((w) => upcomingIds.has(w.id));
+          }
+          setWorkers(groupWorkersWithServices(rows));
+        } else {
+          setWorkers([]);
+        }
+      } catch {
+        if (!cancelled) setWorkers([]);
+      } finally {
+        if (!cancelled) setLoadingDeals(false);
+        if (loadingGuardTimerRef.current) {
+          clearTimeout(loadingGuardTimerRef.current);
+          loadingGuardTimerRef.current = null;
+        }
       }
-    });
+    };
+    void run();
     return () => {
       cancelled = true;
+      if (loadingGuardTimerRef.current) {
+        clearTimeout(loadingGuardTimerRef.current);
+        loadingGuardTimerRef.current = null;
+      }
     };
   }, [dateFilter, timeFilter]);
 
@@ -394,6 +432,8 @@ export default function SearchScreen() {
               style={styles.backBtn}
               onPress={() => router.back()}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel="Go back"
             >
               <Ionicons name="arrow-back" size={24} color="#000" />
             </TouchableOpacity>
@@ -411,7 +451,12 @@ export default function SearchScreen() {
                 autoCorrect={false}
               />
               {query.length > 0 ? (
-                <TouchableOpacity onPress={clearQuery} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <TouchableOpacity
+                  onPress={clearQuery}
+                  hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search text"
+                >
                   <Ionicons name="close-circle" size={22} color="#999" />
                 </TouchableOpacity>
               ) : null}
@@ -420,6 +465,8 @@ export default function SearchScreen() {
               style={styles.sortFilterBtn}
               onPress={() => setSortFilterVisible(true)}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Open sort and filter"
             >
               <Ionicons name="options-outline" size={24} color="#000" />
             </TouchableOpacity>
@@ -447,7 +494,12 @@ export default function SearchScreen() {
               <TouchableOpacity onPress={clearAllFilters} style={styles.clearAllBtn}>
                 <Text style={styles.clearAllText}>Clear all</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => setSortFilterVisible(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <TouchableOpacity
+                onPress={() => setSortFilterVisible(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                accessibilityRole="button"
+                accessibilityLabel="Close sort and filter"
+              >
                 <Ionicons name="close" size={28} color="#000" />
               </TouchableOpacity>
             </View>
@@ -667,6 +719,8 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   backBtn: {
+    minWidth: 44,
+    minHeight: 44,
     padding: 6,
     justifyContent: 'center',
     alignItems: 'center',
@@ -694,6 +748,8 @@ const styles = StyleSheet.create({
     paddingVertical: 0,
   },
   sortFilterBtn: {
+    minWidth: 44,
+    minHeight: 44,
     padding: 10,
     justifyContent: 'center',
     alignItems: 'center',

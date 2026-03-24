@@ -29,3 +29,7 @@ verify_jwt = false
 # pg_net trigger sends x-internal-secret only (no JWT)
 [functions.charge-booking-on-complete]
 verify_jwt = false
+
+# verify_jwt = false so gateway forwards request; function validates worker JWT itself.
+[functions.process-booking-refund]
+verify_jwt = false

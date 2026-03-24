@@ -36,11 +36,13 @@ function iconFor(name: string): React.ComponentProps<typeof MaterialCommunityIco
 export default function ServicesScreen() {
   const [services, setServices] = useState<ServiceRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
+      setLoadError(null);
       const { data } = await supabase
         .from('services')
         .select('id, name, base_price')
@@ -52,6 +54,7 @@ export default function ServicesScreen() {
     })().catch(() => {
       if (cancelled) return;
       setServices([]);
+      setLoadError('Could not load services. Pull to refresh and try again.');
       setLoading(false);
     });
     return () => {
@@ -59,26 +62,7 @@ export default function ServicesScreen() {
     };
   }, []);
 
-  const displayServices = useMemo(
-    () =>
-      services.length
-        ? services
-        : ([
-            { id: '1', name: 'Cleaning', base_price: 25 },
-            { id: '2', name: 'Mounting/Assembly', base_price: 55.5 },
-            { id: '3', name: 'Handyman', base_price: 45 },
-            { id: '4', name: 'Plumbing', base_price: 65 },
-            { id: '5', name: 'Electrical', base_price: 70 },
-            { id: '6', name: 'Moving', base_price: 50 },
-            { id: '7', name: 'Pest Control', base_price: 80 },
-            { id: '8', name: 'Landscaping', base_price: 40 },
-            { id: '9', name: 'Painting', base_price: 55 },
-            { id: '10', name: 'Appliance Repair/Installation', base_price: 60 },
-            { id: '11', name: 'Aircon Service (AC Cleaning)', base_price: 65 },
-            { id: '12', name: 'Smart Home / CCTV Installation', base_price: 55 },
-          ] as ServiceRow[]),
-    [services]
-  );
+  const displayServices = useMemo(() => services, [services]);
 
   return (
     <View style={styles.container}>
@@ -93,8 +77,12 @@ export default function ServicesScreen() {
       </SafeAreaView>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {loading && services.length === 0 ? (
+        {loading ? (
           <Text style={styles.loadingText}>Loading…</Text>
+        ) : loadError ? (
+          <Text style={styles.errorText}>{loadError}</Text>
+        ) : displayServices.length === 0 ? (
+          <Text style={styles.emptyText}>No services available right now.</Text>
         ) : (
           <View style={styles.grid}>
             {displayServices.map((s, idx) => (
@@ -146,6 +134,8 @@ const styles = StyleSheet.create({
   scroll: { flex: 1 },
   scrollContent: { padding: 16, paddingBottom: 120 },
   loadingText: { textAlign: 'center', color: '#666', paddingVertical: 24 },
+  errorText: { textAlign: 'center', color: '#C62828', paddingVertical: 24 },
+  emptyText: { textAlign: 'center', color: '#666', paddingVertical: 24 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   tile: {
     width: '23%',

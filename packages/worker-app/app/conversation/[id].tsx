@@ -8,7 +8,12 @@ import {
   APP_SCREEN_HEADER_BG,
   appScreenHeaderBarPadding,
   appScreenHeaderTitleStyle,
+  formatAudioTime,
   isJobChatOpen,
+  openPhoneDialer,
+  parseVoiceDurationMs,
+  useChatKeyboard,
+  type PhoneDialerCopy,
 } from '@seva/shared';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Image as ExpoImage } from 'expo-image';
@@ -21,10 +26,7 @@ import {
   Animated,
   FlatList,
   Image,
-  Keyboard,
   KeyboardAvoidingView,
-  LayoutAnimation,
-  Linking,
   Platform,
   ScrollView,
   StatusBar,
@@ -60,21 +62,16 @@ type ConvMeta = {
   avatarUrl: string | null;
 };
 
-function formatAudioTime(ms: number): string {
-  const totalSec = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-function parseVoiceDurationMs(body: string | null | undefined): number {
-  const t = (body ?? '').trim();
-  if (/^\d+$/.test(t)) {
-    const n = parseInt(t, 10);
-    return n > 0 && n < 3600000 ? n : 0;
-  }
-  return 0;
-}
+const CALL_CUSTOMER_COPY: PhoneDialerCopy = {
+  noPhoneTitle: 'No phone number',
+  noPhoneMessage: 'This customer has not added a phone number to their profile.',
+  invalidTitle: 'Invalid number',
+  invalidMessage: 'Could not use this phone number.',
+  dialerUnsupportedTitle: 'Unable to call',
+  dialerUnsupportedMessage: 'This device cannot open the phone dialer.',
+  openFailedTitle: 'Unable to call',
+  openFailedMessage: 'Could not open the phone app.',
+};
 
 export default function ConversationScreen() {
   const { user } = useAuth();
@@ -84,6 +81,7 @@ export default function ConversationScreen() {
   const { id: conversationId } = useLocalSearchParams<{ id: string }>();
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [meta, setMeta] = useState<ConvMeta>({
     otherName: 'Chat',
     serviceName: '',
@@ -95,8 +93,7 @@ export default function ConversationScreen() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [pendingImageUris, setPendingImageUris] = useState<string[]>([]);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const { keyboardVisible, keyboardHeight } = useChatKeyboard();
   const listRef = useRef<FlatList>(null);
   const prevBookingStatusRef = useRef<string | null>(null);
   const [recording, setRecording] = useState<any | null>(null);
@@ -155,47 +152,6 @@ export default function ConversationScreen() {
   }, [playbackIsPlaying, playingMessageId, playPulseAnim]);
 
   useEffect(() => {
-    const show = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      (e) => {
-        if (Platform.OS === 'ios') {
-          LayoutAnimation.configureNext({
-            duration: e.duration ?? 250,
-            update: { type: LayoutAnimation.Types.keyboard },
-          });
-        }
-        setKeyboardVisible(true);
-        setKeyboardHeight(e.endCoordinates?.height ?? 0);
-      }
-    );
-    const hide = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      (e) => {
-        if (Platform.OS === 'ios') {
-          const duration =
-            e && typeof e === 'object' && 'duration' in e && typeof (e as { duration?: number }).duration === 'number'
-              ? (e as { duration: number }).duration
-              : 250;
-          LayoutAnimation.configureNext({
-            duration,
-            update: { type: LayoutAnimation.Types.keyboard },
-          });
-        }
-        setKeyboardHeight(0);
-        if (Platform.OS === 'android') {
-          setTimeout(() => setKeyboardVisible(false), 100);
-        } else {
-          setKeyboardVisible(false);
-        }
-      }
-    );
-    return () => {
-      show.remove();
-      hide.remove();
-    };
-  }, []);
-
-  useEffect(() => {
     if (keyboardHeight > 0) {
       const t = setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
       return () => clearTimeout(t);
@@ -221,12 +177,17 @@ export default function ConversationScreen() {
 
   const fetchMessages = useCallback(async () => {
     if (!conversationId) return;
+    setLoadError(null);
     const { data: msgs, error } = await supabase
       .from('messages')
       .select('id, conversation_id, sender_id, body, created_at, attachment_url')
       .eq('conversation_id', conversationId)
       .order('created_at', { ascending: true });
-    if (!error && msgs) setMessages(msgs as MessageRow[]);
+    if (error) {
+      setLoadError(error.message || 'Could not load messages.');
+    } else if (msgs) {
+      setMessages(msgs as MessageRow[]);
+    }
     setLoading(false);
   }, [conversationId]);
 
@@ -267,6 +228,10 @@ export default function ConversationScreen() {
         prevBookingStatusRef.current = b?.status ?? null;
         setMeta({ otherName, serviceName, bookingId, bookingFullId, customerPhone, avatarUrl });
         setBookingScheduledAt(b?.scheduled_date ?? null);
+      } else {
+        setLoadError('You do not have access to this conversation.');
+        setLoading(false);
+        return;
       }
       fetchMessages();
     })();
@@ -657,20 +622,7 @@ export default function ConversationScreen() {
   }, [meta.bookingFullId]);
 
   const onCallCustomer = useCallback(() => {
-    const raw = meta.customerPhone?.trim();
-    if (!raw) {
-      Alert.alert('No phone number', 'This customer has not added a phone number to their profile.');
-      return;
-    }
-    const digits = raw.replace(/[^\d+]/g, '');
-    if (digits.replace(/^\+/, '').length < 8) {
-      Alert.alert('Invalid number', 'Could not use this phone number.');
-      return;
-    }
-    const url = `tel:${digits}`;
-    Linking.openURL(url).catch(() => {
-      Alert.alert('Unable to call', 'Could not open the phone app.');
-    });
+    openPhoneDialer(meta.customerPhone, CALL_CUSTOMER_COPY);
   }, [meta.customerPhone]);
 
   if (!conversationId) {
@@ -693,7 +645,12 @@ export default function ConversationScreen() {
       <StatusBar barStyle="dark-content" backgroundColor="#FFEB3B" />
       <View style={[styles.headerWrapper, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Go back"
+          >
             <Ionicons name="arrow-back" size={24} color="#000" />
           </TouchableOpacity>
           {meta.avatarUrl ? (
@@ -728,6 +685,7 @@ export default function ConversationScreen() {
             style={styles.headerCallBtn}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             accessibilityLabel="Call customer"
+            accessibilityRole="button"
           >
             <Ionicons name="call-outline" size={24} color="#000" />
           </TouchableOpacity>
@@ -743,6 +701,13 @@ export default function ConversationScreen() {
         {loading ? (
           <View style={styles.centered}>
             <ActivityIndicator size="large" color="#000" />
+          </View>
+        ) : loadError ? (
+          <View style={styles.centered}>
+            <Text style={styles.errorText}>{loadError}</Text>
+            <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+              <Text style={styles.backBtnText}>Go back</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           <FlatList
@@ -864,7 +829,7 @@ export default function ConversationScreen() {
               styles.inputRow,
               {
                 paddingBottom: keyboardVisible
-                  ? 0
+                  ? 8
                   : Platform.OS === 'android'
                     ? 12
                     : 12 + insets.bottom,
@@ -875,6 +840,8 @@ export default function ConversationScreen() {
               style={styles.inputIconBtnLeft}
               onPress={pickImage}
               disabled={sending}
+              accessibilityRole="button"
+              accessibilityLabel="Choose photo"
             >
               <Ionicons name="image-outline" size={24} color="#000" />
             </TouchableOpacity>
@@ -892,7 +859,9 @@ export default function ConversationScreen() {
                       <TouchableOpacity
                         style={styles.pendingImageRemove}
                         onPress={() => removePendingImage(index)}
-                        hitSlop={6}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Remove selected photo"
                       >
                         <Ionicons name="close-circle" size={22} color="#333" />
                       </TouchableOpacity>
@@ -916,6 +885,8 @@ export default function ConversationScreen() {
               style={[styles.micBtn, (sending || recordingSending) && styles.micBtnDisabled]}
               onPress={onMicPress}
               disabled={sending || recordingSending}
+              accessibilityRole="button"
+              accessibilityLabel={recording ? 'Stop and send voice message' : 'Record voice message'}
             >
               <Ionicons
                 name={recording ? 'stop-circle' : 'mic'}
@@ -927,6 +898,8 @@ export default function ConversationScreen() {
               style={[styles.sendBtn, ((!input.trim() && pendingImageUris.length === 0) || sending || recording) && styles.sendBtnDisabled]}
               onPress={onSendPress}
               disabled={(!input.trim() && pendingImageUris.length === 0) || sending || recording}
+              accessibilityRole="button"
+              accessibilityLabel="Send message"
             >
               <Ionicons name="send" size={20} color="#000" />
             </TouchableOpacity>
@@ -1069,8 +1042,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFEB3B',
     borderRadius: 22,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    minHeight: 44,
+    paddingVertical: 6,
+    minHeight: 40,
     maxHeight: 220,
   },
   inputBoxWithPhotos: {
@@ -1090,6 +1063,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -2,
     right: -2,
+    minWidth: 32,
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   input: {
     paddingHorizontal: 4,
@@ -1109,6 +1086,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 6,
+    marginBottom: 6,
   },
   micBtn: {
     width: 40,
@@ -1118,6 +1096,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 4,
+    marginBottom: 6,
   },
   micBtnDisabled: { opacity: 0.5 },
   sendBtn: {
@@ -1128,6 +1107,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 4,
+    marginBottom: 6,
   },
   sendBtnDisabled: { opacity: 0.5 },
   chatEndedBar: {

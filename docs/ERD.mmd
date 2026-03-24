@@ -1,0 +1,191 @@
+erDiagram
+    users {
+      uuid id PK
+      enum user_type
+      text full_name
+      text email
+      text phone
+      text avatar_url
+      timestamptz created_at
+      text stripe_customer_id
+    }
+
+    worker_profiles {
+      uuid id PK
+      uuid user_id FK
+      text bio
+      int experience_years
+      decimal rating_average
+      int total_jobs_completed
+      bool is_available
+      decimal latitude
+      decimal longitude
+      text stripe_connect_account_id
+      timestamptz created_at
+      timestamptz updated_at
+    }
+
+    services {
+      uuid id PK
+      text name
+      text description
+      text icon_name
+      decimal base_price
+      bool is_active
+      timestamptz created_at
+      timestamptz updated_at
+    }
+
+    service_subscriptions {
+      uuid id PK
+      uuid worker_id FK
+      uuid service_id FK
+      decimal custom_price
+      timestamptz created_at
+    }
+
+    bookings {
+      uuid id PK
+      uuid customer_id FK
+      uuid worker_id FK
+      uuid service_id FK
+      enum status
+      timestamptz scheduled_date
+      text address
+      decimal latitude
+      decimal longitude
+      decimal price
+      decimal estimated_total
+      decimal total_amount
+      text notes
+      text payment_method
+      text payment_status
+      text stripe_payment_intent_id
+      text stripe_payment_method_id
+      timestamptz completed_at
+      timestamptz created_at
+      timestamptz updated_at
+    }
+
+    booking_refund_requests {
+      uuid id PK
+      uuid booking_id FK
+      uuid customer_id FK
+      uuid worker_id FK
+      text reason
+      text status
+      timestamptz requested_at
+      timestamptz worker_confirmed_at
+      timestamptz processed_at
+      text stripe_refund_id
+      text stripe_refund_status
+      text error_message
+      timestamptz created_at
+      timestamptz updated_at
+    }
+
+    reviews {
+      uuid id PK
+      uuid booking_id FK
+      uuid customer_id FK
+      uuid worker_id FK
+      int rating
+      text comment
+      timestamptz created_at
+    }
+
+    booking_photos {
+      uuid id PK
+      uuid booking_id FK
+      uuid uploaded_by FK
+      text photo_url
+      timestamptz created_at
+    }
+
+    worker_portfolio_photos {
+      uuid id PK
+      uuid worker_id FK
+      text photo_url
+      int sort_order
+      timestamptz created_at
+    }
+
+    worker_availability_windows {
+      uuid id PK
+      uuid worker_id FK
+      date work_date
+      int start_minutes
+      int end_minutes
+      timestamptz created_at
+    }
+
+    conversations {
+      uuid id PK
+      uuid customer_id FK
+      uuid worker_id FK
+      uuid booking_id FK
+      timestamptz created_at
+      timestamptz updated_at
+    }
+
+    messages {
+      uuid id PK
+      uuid conversation_id FK
+      uuid sender_id FK
+      text body
+      text attachment_url
+      timestamptz read_at
+      timestamptz created_at
+    }
+
+    customer_addresses {
+      uuid id PK
+      uuid customer_id FK
+      text label
+      text address
+      decimal latitude
+      decimal longitude
+      bool is_default
+      timestamptz created_at
+    }
+
+    push_tokens {
+      uuid id PK
+      uuid user_id FK
+      text expo_push_token
+      text platform
+      timestamptz created_at
+      timestamptz updated_at
+    }
+
+    users ||--o| worker_profiles : has_worker_profile
+    worker_profiles ||--o{ service_subscriptions : offers
+    services ||--o{ service_subscriptions : listed_in
+
+    users ||--o{ bookings : creates
+    worker_profiles ||--o{ bookings : assigned_to
+    services ||--o{ bookings : booked_service
+
+    bookings ||--o| reviews : reviewed_once
+    users ||--o{ reviews : writes
+    worker_profiles ||--o{ reviews : receives
+
+    bookings ||--o{ booking_photos : has
+    users ||--o{ booking_photos : uploads
+
+    worker_profiles ||--o{ worker_portfolio_photos : showcases
+    worker_profiles ||--o{ worker_availability_windows : availability
+
+    bookings ||--o| booking_refund_requests : refund_request
+    users ||--o{ booking_refund_requests : customer_requests
+    worker_profiles ||--o{ booking_refund_requests : worker_confirms
+
+    users ||--o{ conversations : customer_threads
+    worker_profiles ||--o{ conversations : worker_threads
+    bookings ||--o{ conversations : booking_thread
+
+    conversations ||--o{ messages : contains
+    users ||--o{ messages : sends
+
+    users ||--o{ customer_addresses : saves
+    users ||--o{ push_tokens : receives_push

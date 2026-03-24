@@ -17,3 +17,6 @@ export {
   appScreenHeaderTitleStyle,
   appScreenHeaderBarPadding,
 } from './appScreenHeader';
+export { formatAudioTime, parseVoiceDurationMs } from './chat/voiceUtils';
+export { useChatKeyboard } from './chat/useChatKeyboard';
+export { openPhoneDialer, type PhoneDialerCopy } from './chat/openPhoneDialer';

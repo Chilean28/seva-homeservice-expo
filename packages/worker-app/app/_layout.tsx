@@ -12,7 +12,7 @@ import { router, useSegments } from 'expo-router';
 import { ensureUserProfileAfterSession } from '../lib/supabase/auth';
 import { handleAuthCallbackDeepLink, isAuthCallbackDeepLink } from '../lib/supabase/handleAuthDeepLink';
 import { supabase } from '../lib/supabase/client';
-import { ActivityIndicator, View, StyleSheet, Text, Alert, Linking } from 'react-native';
+import { ActivityIndicator, View, StyleSheet, Text, Alert, Linking, Image, LogBox } from 'react-native';
 
 type WorkerCheck = 'idle' | 'loading' | 'allowed' | 'rejected';
 
@@ -21,6 +21,14 @@ function RootLayoutNav() {
   const { user, loading, signOut } = useAuth();
   const segments = useSegments();
   const [workerCheck, setWorkerCheck] = useState<WorkerCheck>('idle');
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    LogBox.ignoreLogs([
+      'TypeError: Network request failed',
+      'Network request failed',
+    ]);
+  }, []);
 
   // Ensure only users with user_type = 'worker' can use the worker app
   useEffect(() => {
@@ -35,8 +43,13 @@ function RootLayoutNav() {
       .eq('id', user.id)
       .maybeSingle()
       .then(({ data, error }) => {
-        if (error || !data) {
-          setWorkerCheck('rejected');
+        if (error) {
+          console.warn('[Auth] worker check skipped due to transient error:', error.message);
+          setWorkerCheck('allowed');
+          return;
+        }
+        if (!data) {
+          setWorkerCheck('allowed');
           return;
         }
         if ((data as { user_type: string }).user_type === 'worker') {
@@ -110,6 +123,7 @@ function RootLayoutNav() {
     return (
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <View style={styles.checkingRoot}>
+          <Image source={require('../assets/images/splash-icon-white-bg.png')} style={styles.loadingLogo} />
           <ActivityIndicator size="large" color="#000" />
           <Text style={styles.checkingText}>Loading…</Text>
         </View>
@@ -123,6 +137,7 @@ function RootLayoutNav() {
     return (
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <View style={styles.checkingRoot}>
+          <Image source={require('../assets/images/splash-icon-white-bg.png')} style={styles.loadingLogo} />
           <ActivityIndicator size="large" color="#000" />
           <Text style={styles.checkingText}>Checking account…</Text>
         </View>
@@ -141,6 +156,7 @@ function RootLayoutNav() {
           <Stack.Screen name="conversation/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="job/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="payouts" options={{ headerShown: false }} />
+          <Stack.Screen name="legal/refund-policy" options={{ headerShown: false }} />
         </Stack>
         </PendingJobsProvider>
         <StatusBar style="auto" />
@@ -160,6 +176,11 @@ const styles = StyleSheet.create({
   checkingText: {
     fontSize: 16,
     color: '#666',
+  },
+  loadingLogo: {
+    width: 96,
+    height: 96,
+    borderRadius: 24,
   },
 });
 

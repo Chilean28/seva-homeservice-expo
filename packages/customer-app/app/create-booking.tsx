@@ -84,6 +84,38 @@ function cellIsoDate(year: number, monthIndex: number, day: number): string {
   return `${year}-${pad2(monthIndex + 1)}-${pad2(day)}`;
 }
 
+function startOfLocalDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/** First 5-minute-aligned local time on `dayAnchor`'s calendar day that is >= `instant`, or start of next day. */
+function firstFiveMinuteSlotOnDayAtOrAfter(dayAnchor: Date, instant: Date): Date {
+  const start = startOfLocalDay(dayAnchor);
+  const endDay = new Date(start);
+  endDay.setDate(endDay.getDate() + 1);
+  let t = new Date(start);
+  while (t < endDay) {
+    if (t.getTime() >= instant.getTime()) return t;
+    t = new Date(t.getTime() + 5 * 60 * 1000);
+  }
+  return endDay;
+}
+
+/** Earliest valid local schedule time for `anchor` (non–worker-slot / device-local picker). */
+function minValidScheduleDateTimeLocal(anchor: Date): Date {
+  const now = new Date();
+  const a0 = startOfLocalDay(anchor);
+  const n0 = startOfLocalDay(now);
+  if (a0.getTime() > n0.getTime()) return a0;
+  if (a0.getTime() < n0.getTime()) return anchor;
+  return firstFiveMinuteSlotOnDayAtOrAfter(anchor, now);
+}
+
+function clampScheduleNotPastLocal(d: Date): Date {
+  const minT = minValidScheduleDateTimeLocal(d);
+  return d.getTime() >= minT.getTime() ? d : minT;
+}
+
 export default function CreateBookingScreen() {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
@@ -483,8 +515,12 @@ export default function CreateBookingScreen() {
       setSlotPickerVisible(true);
       return;
     }
-    const h24 = scheduledDate.getHours();
-    const m = scheduledDate.getMinutes();
+    const base = clampScheduleNotPastLocal(scheduledDate);
+    if (base.getTime() !== scheduledDate.getTime()) {
+      setScheduledDate(base);
+    }
+    const h24 = base.getHours();
+    const m = base.getMinutes();
     const { hour, ampm } = hour24To12(h24);
     const minute5 = Math.min(55, Math.round(m / 5) * 5);
     setWheelHour(hour);
@@ -514,7 +550,7 @@ export default function CreateBookingScreen() {
     const h24 = hour12To24(wheelHour, wheelAmPm);
     const d = new Date(scheduledDate);
     d.setHours(h24, wheelMinute, 0, 0);
-    setScheduledDate(d);
+    setScheduledDate(clampScheduleNotPastLocal(d));
     setTimePickerVisible(false);
   }, [scheduledDate, wheelHour, wheelMinute, wheelAmPm]);
 
@@ -535,7 +571,7 @@ export default function CreateBookingScreen() {
       }
       const d = new Date(scheduledDate);
       d.setFullYear(year, month, day);
-      setScheduledDate(d);
+      setScheduledDate(clampScheduleNotPastLocal(d));
     },
     [scheduledDate, useWorkerSlots, todayCambodia, allowedDates, availWindows, overlapStarts]
   );
@@ -556,7 +592,12 @@ export default function CreateBookingScreen() {
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerBack}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.headerBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
           <Ionicons name="arrow-back" size={24} color="#000" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Book: {serviceName}</Text>
@@ -599,12 +640,21 @@ export default function CreateBookingScreen() {
             ) : null}
           </View>
 
-          <Modal visible={savedAddressesModalVisible} transparent animationType="slide">
+          <Modal
+            visible={savedAddressesModalVisible}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setSavedAddressesModalVisible(false)}
+          >
             <View style={styles.modalOverlay}>
               <View style={[styles.savedAddressesCard, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 16 }]}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Saved addresses</Text>
-                  <TouchableOpacity onPress={() => setSavedAddressesModalVisible(false)}>
+                  <TouchableOpacity
+                    onPress={() => setSavedAddressesModalVisible(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close saved addresses"
+                  >
                     <Text style={styles.modalCancel}>Cancel</Text>
                   </TouchableOpacity>
                 </View>
@@ -708,12 +758,21 @@ export default function CreateBookingScreen() {
             </Text>
           ) : null}
 
-          <Modal visible={datePickerVisible} transparent animationType="slide">
+          <Modal
+            visible={datePickerVisible}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setDatePickerVisible(false)}
+          >
             <View style={styles.datePickerOverlay}>
               <View style={[styles.datePickerCard, { paddingTop: insets.top + 12 }]}>
                 <View style={styles.modalHeader}>
                   <Text style={styles.modalTitle}>Choose date</Text>
-                  <TouchableOpacity onPress={() => setDatePickerVisible(false)}>
+                  <TouchableOpacity
+                    onPress={() => setDatePickerVisible(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close date picker"
+                  >
                     <Text style={styles.modalCancel}>Cancel</Text>
                   </TouchableOpacity>
                 </View>
@@ -800,11 +859,20 @@ export default function CreateBookingScreen() {
             </View>
           </Modal>
 
-          <Modal visible={timePickerVisible} transparent animationType="slide">
+          <Modal
+            visible={timePickerVisible}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setTimePickerVisible(false)}
+          >
             <View style={styles.modalOverlay}>
               <View style={[styles.modalCard, { paddingTop: insets.top + 12 }]}>
                 <View style={styles.modalHeader}>
-                  <TouchableOpacity onPress={() => setTimePickerVisible(false)}>
+                  <TouchableOpacity
+                    onPress={() => setTimePickerVisible(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close time picker"
+                  >
                     <Text style={styles.modalCancel}>Cancel</Text>
                   </TouchableOpacity>
                   <View style={styles.wheelHeaderCenter}>
@@ -987,11 +1055,20 @@ export default function CreateBookingScreen() {
             </View>
           </Modal>
 
-          <Modal visible={slotPickerVisible} transparent animationType="slide">
+          <Modal
+            visible={slotPickerVisible}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setSlotPickerVisible(false)}
+          >
             <View style={styles.modalOverlay}>
               <View style={[styles.modalCard, { paddingTop: insets.top + 12, maxHeight: '70%' }]}>
                 <View style={styles.modalHeader}>
-                  <TouchableOpacity onPress={() => setSlotPickerVisible(false)}>
+                  <TouchableOpacity
+                    onPress={() => setSlotPickerVisible(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Close time slot picker"
+                  >
                     <Text style={styles.modalCancel}>Cancel</Text>
                   </TouchableOpacity>
                   <Text style={styles.modalTitle}>Time (GMT+7)</Text>
@@ -1072,7 +1149,10 @@ const styles = StyleSheet.create({
     ...appScreenHeaderBarPadding,
   },
   headerBack: {
-    width: 40,
+    width: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
     ...appScreenHeaderTitleStyle,

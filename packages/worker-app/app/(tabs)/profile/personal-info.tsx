@@ -225,15 +225,6 @@ export default function PersonalInfoScreen() {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.editProfileRow}
-          onPress={() => router.push({ pathname: '/(tabs)/profile/setup', params: { from: 'profile' } })}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="options-outline" size={22} color="#000" style={styles.editProfileIcon} />
-          <Text style={styles.editProfileLabel}>Edit profile (bio, experience, services)</Text>
-          <Ionicons name="chevron-forward" size={20} color="#999" />
-        </TouchableOpacity>
       </ScrollView>
     </View>
   );
@@ -259,7 +250,7 @@ const styles = StyleSheet.create({
     width: 96,
     height: 96,
     borderRadius: 48,
-    backgroundColor: APP_SCREEN_HEADER_BG,
+    backgroundColor: '#E8E8E8',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -271,13 +262,13 @@ const styles = StyleSheet.create({
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: APP_SCREEN_HEADER_BG,
+    backgroundColor: '#FFEB3B',
     borderWidth: 2,
     borderColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarInitials: { fontSize: 28, fontWeight: '600', color: '#000' },
+  avatarInitials: { fontSize: 28, fontWeight: '600', color: '#666' },
   avatarHint: { fontSize: 12, color: '#666', marginTop: 8 },
   field: { marginBottom: 24 },
   label: { fontSize: 14, fontWeight: '600', color: '#333', marginBottom: 8 },
@@ -301,15 +292,4 @@ const styles = StyleSheet.create({
   },
   saveBtnDisabled: { opacity: 0.7 },
   saveBtnText: { fontSize: 16, fontWeight: '700', color: '#000' },
-  editProfileRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 32,
-    paddingVertical: 16,
-    paddingHorizontal: 4,
-    borderTopWidth: 1,
-    borderTopColor: '#EEE',
-  },
-  editProfileIcon: { marginRight: 14 },
-  editProfileLabel: { flex: 1, fontSize: 16, color: '#000' },
 });

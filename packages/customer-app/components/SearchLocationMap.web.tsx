@@ -1,4 +1,5 @@
-import React from 'react';
+import type { SearchLocationMapRef } from '@/components/SearchLocationMap';
+import React, { useImperativeHandle, useMemo, useState } from 'react';
 import { Linking, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 // react-native-maps does not support web. Show fallback: coords + Open in Maps + Select.
@@ -10,26 +11,44 @@ type Props = {
   onSelect: (lat: number, lng: number) => void;
 };
 
-export default function SearchLocationMap({
-  initialLat,
-  initialLng,
-  onSelect,
-}: Props) {
-  const mapUrl = `https://www.google.com/maps/search/?api=1&query=${initialLat},${initialLng}`;
+const SearchLocationMap = React.forwardRef<SearchLocationMapRef, Props>(function SearchLocationMap(
+  { initialLat, initialLng, onLocationChange, onSelect },
+  ref
+) {
+  const [coords, setCoords] = useState({ lat: initialLat, lng: initialLng });
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      animateToLocation(lat: number, lng: number) {
+        setCoords({ lat, lng });
+        onLocationChange(lat, lng);
+      },
+    }),
+    [onLocationChange]
+  );
+
+  const mapUrl = useMemo(
+    () => `https://www.google.com/maps/search/?api=1&query=${coords.lat},${coords.lng}`,
+    [coords.lat, coords.lng]
+  );
+
   return (
     <View style={styles.mapFallback}>
       <Text style={styles.mapFallbackText}>
-        {initialLat.toFixed(4)}, {initialLng.toFixed(4)}
+        {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}
       </Text>
       <TouchableOpacity style={styles.linkButton} onPress={() => Linking.openURL(mapUrl)}>
         <Text style={styles.linkButtonText}>Open in Maps</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.selectButton} onPress={() => onSelect(initialLat, initialLng)}>
+      <TouchableOpacity style={styles.selectButton} onPress={() => onSelect(coords.lat, coords.lng)}>
         <Text style={styles.selectButtonText}>Select This Location</Text>
       </TouchableOpacity>
     </View>
   );
-}
+});
+
+export default SearchLocationMap;
 
 const styles = StyleSheet.create({
   mapFallback: {
